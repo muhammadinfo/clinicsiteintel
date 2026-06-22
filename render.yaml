@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: clinicsiteintel
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r webapp/requirements.txt"
+    startCommand: "gunicorn --chdir webapp server:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1"
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: CENSUS_API_KEY
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false

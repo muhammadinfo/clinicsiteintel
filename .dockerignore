@@ -1,0 +1,10 @@
+dist/
+build/
+**/__pycache__/
+*.spec
+*.sqlite3
+webapp/_server.log
+webapp/_preview.html
+webapp/_test_resp.json
+.git
+installer/

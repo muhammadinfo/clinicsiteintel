@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a84ff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ClinicSiteIntel" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+  <title>ClinicSiteIntel — Clinic Site Assessment</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CSI</div>
+      <div>
+        <h1>ClinicSiteIntel</h1>
+        <p>Live clinic market &amp; demographic assessment</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <form id="searchForm" class="search">
+      <input id="address" type="text" inputmode="text" autocomplete="off"
+             placeholder="Enter a full address, e.g. 2220 Lynn Rd, Thousand Oaks, CA 91360" />
+      <button id="runBtn" type="submit">Run report</button>
+    </form>
+    <p class="hint">Real-time pull: US Census ACS, NPPES NPI Registry, geocoded competitors &amp; referrers,
+       Bayesian Location Viability Index. A full run takes ~60–90 seconds.</p>
+
+    <section id="status" class="status hidden"></section>
+    <section id="results" class="results"></section>
+  </main>
+
+  <footer class="foot">Advanced Dental Sleep &amp; TMJ Clinic · ClinicSiteIntel</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
