@@ -3,6 +3,27 @@ const $ = (s) => document.querySelector(s);
 const form = $('#searchForm'), addrEl = $('#address'), btn = $('#runBtn');
 const statusEl = $('#status'), resultsEl = $('#results');
 
+// Backend base URL. On the web build the UI is served by the backend, so a
+// relative path works. In the packaged phone app there is no server origin, so
+// the user points it at their hosted backend (Render URL) once; we remember it.
+const isNative = !/^https?:$/.test(location.protocol) || location.hostname === 'localhost' && window.Capacitor;
+function apiBase() { return (localStorage.getItem('apiBase') || '').replace(/\/+$/, ''); }
+function apiUrl(p) { return apiBase() ? apiBase() + p : p; }
+function setBackend() {
+  const cur = apiBase();
+  const v = window.prompt('Backend server URL (your hosted ClinicSiteIntel, e.g. https://clinicsiteintel.onrender.com):', cur);
+  if (v !== null) { localStorage.setItem('apiBase', v.trim()); maybeBanner(); }
+}
+function maybeBanner() {
+  if (isNative && !apiBase()) {
+    statusEl.className = 'status error';
+    statusEl.innerHTML = 'Tap ⚙ and set your backend server URL to start running reports.';
+    statusEl.classList.remove('hidden');
+  }
+}
+const sb = $('#settingsBtn'); if (sb) sb.addEventListener('click', setBackend);
+maybeBanner();
+
 const money = (v) => (v == null ? 'n/a' : '$' + Math.round(v).toLocaleString());
 const num = (v, d = 0) => (v == null ? 'n/a' : Number(v).toFixed(d));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -30,7 +51,7 @@ form.addEventListener('submit', async (e) => {
   if (!address) return;
   btn.disabled = true; resultsEl.innerHTML = ''; showProgress();
   try {
-    const r = await fetch('/api/report', {
+    const r = await fetch(apiUrl('/api/report'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address })
     });
@@ -86,6 +107,15 @@ function render(d) {
       <td><div class="nm">${esc(c.name)}</div><div class="meta">${esc(c.tier)} · ${esc(c.address)}</div></td>
       <td class="d">${c.distance_mi == null ? '' : num(c.distance_mi,1)+' mi'}</td></tr>`).join('');
     html += `<div class="card"><h3>Competitors (credentialed + advertising TMJ/sleep)</h3>
+      <div class="body"><table class="comp">${rows}</table></div></div>`;
+  }
+
+  // Referral sources
+  if (d.referrals && d.referrals.length) {
+    let rows = d.referrals.map(x => `<tr>
+      <td><div class="nm">${esc(x.name)}</div><div class="meta">${esc(x.specialty)}</div></td>
+      <td class="d">${x.distance_mi == null ? '' : num(x.distance_mi,1)+' mi'}</td></tr>`).join('');
+    html += `<div class="card"><h3>Referral sources nearby (physicians who feed OSA/TMD cases)</h3>
       <div class="body"><table class="comp">${rows}</table></div></div>`;
   }
 

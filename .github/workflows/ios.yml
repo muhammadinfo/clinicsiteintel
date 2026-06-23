@@ -1,0 +1,64 @@
+# Builds the ClinicSiteIntel iOS app on GitHub's FREE macOS runners.
+# Public repo  -> unlimited free build minutes. Only a free GitHub account needed.
+# Output: an UNSIGNED .ipa (download it from the run's Artifacts), which you
+# install on your iPhone with AltStore/Sideloadly + a free Apple ID.
+#
+# Trigger: pushes to main that touch mobile/, or run it manually from the
+# repo's Actions tab ("Build iOS app" -> Run workflow).
+
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  ios:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install JS deps
+        working-directory: mobile
+        run: npm install
+
+      - name: Add iOS platform, sync web assets, generate icons
+        working-directory: mobile
+        run: |
+          npx cap add ios || true
+          npx cap sync ios
+          npx @capacitor/assets generate --ios || true
+
+      - name: CocoaPods
+        working-directory: mobile/ios/App
+        run: pod install
+
+      - name: Build unsigned archive
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Release -sdk iphoneos \
+            -archivePath build/App.xcarchive archive \
+            CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned .ipa
+        working-directory: mobile/ios/App
+        run: |
+          mkdir -p build/Payload
+          cp -R build/App.xcarchive/Products/Applications/App.app build/Payload/
+          cd build && zip -r ClinicSiteIntel-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClinicSiteIntel-ios-ipa
+          path: mobile/ios/App/build/ClinicSiteIntel-unsigned.ipa
+          if-no-files-found: error

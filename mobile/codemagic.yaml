@@ -1,0 +1,45 @@
+# Cloud-Mac build for the ClinicSiteIntel iOS app (Capacitor).
+# Runs on Codemagic's free macOS runners (500 min/month). Produces an .ipa you
+# can install on your iPhone. Two routes:
+#   - UNSIGNED ipa  -> sideload with a FREE Apple ID via AltStore/Sideloadly (re-sign weekly).
+#   - SIGNED ipa    -> TestFlight (smooth, 90 days) if you add an Apple Developer account ($99/yr).
+#
+# Setup: push this repo to GitHub, sign in at codemagic.io with GitHub, pick the
+# repo, run the "ios-clinicsiteintel" workflow. The .ipa appears under Artifacts.
+
+workflows:
+  ios-clinicsiteintel:
+    name: ClinicSiteIntel iOS
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: "com.clinicsiteintel.app"
+    scripts:
+      - name: Install JS deps
+        script: |
+          cd mobile
+          npm install
+      - name: Add iOS platform, sync web assets, generate icons
+        script: |
+          cd mobile
+          npx cap add ios || true
+          npx cap sync ios
+          npx @capacitor/assets generate --ios || true
+      - name: Build UNSIGNED .ipa (for free-Apple-ID sideload)
+        script: |
+          cd mobile/ios/App
+          pod install || true
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Release -sdk iphoneos \
+            -archivePath build/App.xcarchive archive \
+            CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" || true
+          mkdir -p build/Payload
+          cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/ 2>/dev/null || \
+            cp -r build/*.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -r ClinicSiteIntel-unsigned.ipa Payload
+    artifacts:
+      - mobile/ios/App/build/ClinicSiteIntel-unsigned.ipa

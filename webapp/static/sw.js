@@ -1,6 +1,6 @@
 // ClinicSiteIntel service worker — caches the app shell so it installs and
 // launches offline. Report requests (/api/*) are always network (live data).
-const CACHE = 'csi-shell-v1';
+const CACHE = 'csi-shell-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {

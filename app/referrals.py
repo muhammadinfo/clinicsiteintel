@@ -99,7 +99,7 @@ def _find_referral_candidates_nppes(lat: float, lon: float, zip5: str, state: st
         # Geocode the closest handful to their REAL street address (the rest keep
         # the centroid prefilter) so a same-building referrer reads ~0 mi instead
         # of the ZIP-centroid ~0.6 mi — which is what makes a medical-hub site score.
-        nppes.attach_real_distances(providers, lat, lon, limit=8)
+        nppes.attach_real_distances(providers, lat, lon, limit=4)
         # Nearest first, keep the closest few per specialty.
         providers = [p for p in providers if p.distance_mi is not None]
         providers.sort(key=lambda p: p.distance_mi)

@@ -1,0 +1,7 @@
+{
+  "appId": "com.clinicsiteintel.app",
+  "appName": "ClinicSiteIntel",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "server": { "androidScheme": "https" }
+}

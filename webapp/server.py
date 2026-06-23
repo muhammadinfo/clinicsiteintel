@@ -95,6 +95,13 @@ def _shape(rep: dict) -> dict:
              "score": c.get("competition_score")}
             for c in sorted(comps, key=_comp_sort)[:12]
         ],
+        "referrals": [
+            {"name": r.get("name"), "specialty": r.get("specialty"),
+             "distance_mi": r.get("distance_mi"), "fit": r.get("fit_weight")}
+            for r in sorted(
+                [r for r in refs if str(r.get("category", "")).startswith("Physician")],
+                key=lambda r: (r.get("distance_mi") if r.get("distance_mi") is not None else 999))[:18]
+        ],
         "errors": rep.get("errors", []),
     }
 
