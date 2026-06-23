@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">ClinicSiteIntel</string>
-    <string name="title_activity_main">ClinicSiteIntel</string>
-    <string name="package_name">com.clinicsiteintel.app</string>
-    <string name="custom_url_scheme">com.clinicsiteintel.app</string>
-</resources>
