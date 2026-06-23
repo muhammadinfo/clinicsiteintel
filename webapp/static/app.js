@@ -6,9 +6,20 @@ const statusEl = $('#status'), resultsEl = $('#results');
 // Backend base URL. On the web build the UI is served by the backend, so a
 // relative path works. In the packaged phone app there is no server origin, so
 // the user points it at their hosted backend (Render URL) once; we remember it.
-const isNative = !/^https?:$/.test(location.protocol) || location.hostname === 'localhost' && window.Capacitor;
-function apiBase() { return (localStorage.getItem('apiBase') || '').replace(/\/+$/, ''); }
+const isNative = !/^https?:$/.test(location.protocol) || (location.hostname === 'localhost' && window.Capacitor);
+function apiBase() {
+  let b = (localStorage.getItem('apiBase') || '').trim().replace(/\s+/g, '').replace(/\/+$/, '');
+  if (b && !/^https?:\/\//i.test(b)) b = 'https://' + b;     // add scheme if missing
+  try { if (b) new URL(b); } catch (e) { b = ''; }            // ignore a malformed value
+  return b;
+}
 function apiUrl(p) { return apiBase() ? apiBase() + p : p; }
+
+// Never fail silently to a blank screen — surface any script error on-page.
+window.addEventListener('error', (e) => {
+  const s = document.getElementById('status');
+  if (s) { s.className = 'status error'; s.classList.remove('hidden'); s.textContent = '⚠ ' + (e.message || 'Script error'); }
+});
 function setBackend() {
   const cur = apiBase();
   const v = window.prompt('Backend server URL (your hosted ClinicSiteIntel, e.g. https://clinicsiteintel.onrender.com):', cur);
