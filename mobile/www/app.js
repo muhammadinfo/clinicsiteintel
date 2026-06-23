@@ -6,9 +6,20 @@ const statusEl = $('#status'), resultsEl = $('#results');
 // Backend base URL. On the web build the UI is served by the backend, so a
 // relative path works. In the packaged phone app there is no server origin, so
 // the user points it at their hosted backend (Render URL) once; we remember it.
-const isNative = !/^https?:$/.test(location.protocol) || location.hostname === 'localhost' && window.Capacitor;
-function apiBase() { return (localStorage.getItem('apiBase') || '').replace(/\/+$/, ''); }
+const isNative = !/^https?:$/.test(location.protocol) || (location.hostname === 'localhost' && window.Capacitor);
+function apiBase() {
+  let b = (localStorage.getItem('apiBase') || '').trim().replace(/\s+/g, '').replace(/\/+$/, '');
+  if (b && !/^https?:\/\//i.test(b)) b = 'https://' + b;     // add scheme if missing
+  try { if (b) new URL(b); } catch (e) { b = ''; }            // ignore a malformed value
+  return b;
+}
 function apiUrl(p) { return apiBase() ? apiBase() + p : p; }
+
+// Never fail silently to a blank screen — surface any script error on-page.
+window.addEventListener('error', (e) => {
+  const s = document.getElementById('status');
+  if (s) { s.className = 'status error'; s.classList.remove('hidden'); s.textContent = '⚠ ' + (e.message || 'Script error'); }
+});
 function setBackend() {
   const cur = apiBase();
   const v = window.prompt('Backend server URL (your hosted ClinicSiteIntel, e.g. https://clinicsiteintel.onrender.com):', cur);
@@ -107,6 +118,15 @@ function render(d) {
       <td><div class="nm">${esc(c.name)}</div><div class="meta">${esc(c.tier)} · ${esc(c.address)}</div></td>
       <td class="d">${c.distance_mi == null ? '' : num(c.distance_mi,1)+' mi'}</td></tr>`).join('');
     html += `<div class="card"><h3>Competitors (credentialed + advertising TMJ/sleep)</h3>
+      <div class="body"><table class="comp">${rows}</table></div></div>`;
+  }
+
+  // Referral sources
+  if (d.referrals && d.referrals.length) {
+    let rows = d.referrals.map(x => `<tr>
+      <td><div class="nm">${esc(x.name)}</div><div class="meta">${esc(x.specialty)}</div></td>
+      <td class="d">${x.distance_mi == null ? '' : num(x.distance_mi,1)+' mi'}</td></tr>`).join('');
+    html += `<div class="card"><h3>Referral sources nearby (physicians who feed OSA/TMD cases)</h3>
       <div class="body"><table class="comp">${rows}</table></div></div>`;
   }
 

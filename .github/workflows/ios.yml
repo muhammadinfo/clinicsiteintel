@@ -27,6 +27,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Sync latest web UI into the app bundle
+        run: |
+          rm -rf mobile/www
+          mkdir -p mobile/www
+          cp -R webapp/static/* mobile/www/
+
       - name: Install JS deps
         working-directory: mobile
         run: npm install
