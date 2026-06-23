@@ -23,3 +23,6 @@ _ttest.json
 _test_resp.json
 rerun_128.log
 webapp/static/ClinicSiteIntel.apk
+
+installer/output/
+*.exe
