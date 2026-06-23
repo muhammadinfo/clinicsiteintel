@@ -81,36 +81,7 @@ form.addEventListener('submit', async (e) => {
 function metric(k, v) { return `<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
 
 function render(d) {
-  const lvi = d.lvi || {}, v = d.verdict || {}, dem = d.demographics || {},
-        comp = d.competition || {}, sp = d.spatial || {}, ec = d.econ || {};
-  const near = comp.nearest_mi == null ? 'none' : num(comp.nearest_mi, 1) + ' mi';
   let html = '';
-
-  // Hero
-  html += `<div class="card"><div class="body">
-    <p class="addr">${esc(d.address)}</p>
-    <div class="hero">
-      <div class="score" style="color:${v.color}">${num(lvi.mean, 1)}</div>
-      <div>
-        <span class="badge" style="background:${v.color}">${esc(v.band)}</span>
-        <div class="sub" style="margin-top:6px">Location Viability Index · point ${num(lvi.point_estimate,1)} · 90% CI [${num(lvi.p05,1)}, ${num(lvi.p95,1)}]</div>
-      </div>
-    </div>
-    <div class="metrics" style="margin-top:14px">
-      ${metric('Median income', money(dem.income))}
-      ${metric('Median age', num(dem.age,1))}
-      ${metric('Specialist competitors', comp.count + ' · nearest ' + near)}
-      ${metric('Referring physicians', (d.referrals||{}).count ?? 'n/a')}
-      ${metric('Demand capture (Huff)', sp.huff == null ? 'n/a' : num(sp.huff,1)+'%')}
-      ${metric('Cases/yr vs break-even', (ec.projected==null?'n/a':Math.round(ec.projected))+' / '+(ec.break_even==null?'n/a':Math.round(ec.break_even)))}
-    </div>
-  </div></div>`;
-
-  // Consultant's Read
-  if (d.consultant_html) {
-    html += `<div class="card"><h3>Consultant's Read — how this verdict is built</h3>
-      <div class="body consult">${d.consultant_html}</div></div>`;
-  }
 
   // Competitors
   if (d.competitors && d.competitors.length) {
@@ -133,9 +104,24 @@ function render(d) {
   if (d.errors && d.errors.length) {
     html += `<div class="card"><h3>Data-gap notes</h3><div class="body errs">${d.errors.map(esc).join('<br>')}</div></div>`;
   }
-  resultsEl.innerHTML = html;
+  const frame = d.summary_html
+    ? '<iframe id="summaryFrame" scrolling="no" title="Site assessment" style="width:100%;border:0;display:block;border-radius:18px;background:#f5f5f7;height:1200px;"></iframe>'
+    : '';
+  resultsEl.innerHTML = frame + html;
+  if (d.summary_html) {
+    const f = document.getElementById('summaryFrame');
+    f.srcdoc = d.summary_html;
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// The premium summary iframe reports its content height so it never inner-scrolls.
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.csiHeight) {
+    const f = document.getElementById('summaryFrame');
+    if (f) f.style.height = (e.data.csiHeight + 24) + 'px';
+  }
+});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

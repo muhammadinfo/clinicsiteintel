@@ -7,6 +7,7 @@ Set-Location $root
 pyinstaller --noconfirm --windowed --name ClinicSiteIntel `
     --paths "$root\app" `
     --add-data "$root\app;app" `
+    --collect-all PySide6.QtWebEngineCore `
     "$root\app\main.py"
 
 Write-Host ""

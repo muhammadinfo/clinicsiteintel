@@ -83,6 +83,7 @@ def _shape(rep: dict) -> dict:
         "address": geo.get("matched_address") or rep.get("address_input"),
         "lvi": {k: summ.get(k) for k in ("mean", "point_estimate", "sd", "p05", "p95")},
         "verdict": {"band": band, "color": color},
+        "summary_html": narrative_mod.build_summary_html(rep),
         "consultant_html": narrative_mod.build_consultant_read(rep),
         "demographics": {"income": demo.get("median_household_income"), "age": demo.get("median_age")},
         "competition": {"count": len(specs), "nearest_mi": (min(dists) if dists else None)},

@@ -11,6 +11,7 @@ import traceback
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont, QColor, QPixmap
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QTabWidget, QTextEdit, QTableWidget,
@@ -260,7 +261,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
 
-        self.summary_tab = QTextEdit(readOnly=True)
+        self.summary_tab = QWebEngineView()   # premium HTML/CSS consultant summary
         self.tabs.addTab(self.summary_tab, "Summary")
 
         self.demo_tab = QTextEdit(readOnly=True)
@@ -981,57 +982,13 @@ class MainWindow(QMainWindow):
 
     def _render_summary(self, rep):
         geo = rep.get("geo", {})
-        lvi_s = rep.get("lvi_summary", {})
-        errors = rep.get("errors", [])
-
-        lvi_mean = lvi_s.get("mean", 0)
-        lvi_color = PAL["green"] if lvi_mean >= 65 else (PAL["amber"] if lvi_mean >= 45 else PAL["red"])
-
-        html = f"""
-        <h2 style="color:{PAL['text']}; margin-bottom:2px;">{geo.get('matched_address', rep.get('address_input'))}</h2>
-        <div style="color:{PAL['text2']}; margin-bottom:16px;">
-            Coordinates {geo.get('lat')}, {geo.get('lon')} &nbsp;&middot;&nbsp; ZIP/ZCTA {geo.get('zip_code') or 'n/a'}
-        </div>
-        """
-
-        html += self._interpretation_section(rep)
-
-        html += self._card(
-            "LOCATION VIABILITY INDEX — BAYESIAN MONTE CARLO, 50,000 DRAWS",
-            f"""
-            <div style="display:flex; align-items:baseline; gap:24px; margin-bottom:6px;">
-                <div style="font-size:44px; font-weight:800; color:{lvi_color};">{lvi_s.get('mean','—')}</div>
-                <div style="color:{PAL['text2']};">
-                    point estimate {lvi_s.get('point_estimate','—')} &nbsp;|&nbsp; SD {lvi_s.get('sd','—')}<br>
-                    90% credible interval: <b style="color:{PAL['text']};">[{lvi_s.get('p05','—')}, {lvi_s.get('p95','—')}]</b>
-                </div>
-            </div>
-            <div style="color:{PAL['text2']}; font-size:12.5px; margin-top:6px;">
-                Blends live demographic fit, discovered/verified competitor intensity, and referral-partner
-                density. Real-estate-specific factors (rate, build-out, HVAC) are NOT yet folded in until you
-                capture a specific listing via the Real Estate tab's paste-extract panel — this score reflects
-                location quality independent of any one suite.
-            </div>
-            """,
-        )
-
-        html += self._consultant_section(rep)
-        html += self._spatial_section(rep.get("spatial"))
-        html += self._econ_section(rep.get("econ"))
-        html += self._sensitivity_section(rep)
-
-        if errors:
-            err_items = "".join(f"<li style='margin-bottom:4px;'>{e}</li>" for e in errors)
-            html += self._card(
-                "DATA-GAP / SETUP NOTES",
-                f"<ul style='margin:0; padding-left:18px; color:{PAL['amber']}'>{err_items}</ul>",
-            )
-
-        html += (
-            f"<div style='color:{PAL['text3']}; font-size:11.5px; margin-top:6px;'>"
-            "See the Demographics, Competitors, Referral Map, Real Estate, and Statistics tabs for "
-            "the full detail behind this score.</div>"
-        )
+        import narrative
+        try:
+            html = narrative.build_summary_html(rep)
+        except Exception as e:
+            import traceback as _tb
+            html = (f"<body style='font-family:Segoe UI;padding:24px;color:#b00;'>"
+                    f"<h3>Summary render failed</h3><pre>{e}\n\n{_tb.format_exc()}</pre></body>")
         self.summary_tab.setHtml(html)
 
     def _spatial_section(self, sp):
@@ -1335,6 +1292,7 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setStyleSheet(LIGHT_STYLE)
     app.setFont(QFont("Segoe UI", 10))
