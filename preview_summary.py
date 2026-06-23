@@ -51,7 +51,7 @@ OUT2 = os.path.join(HERE, "_summary_preview2.png")
 def grab_top():
     view.grab().save(OUT)
     print("saved", OUT)
-    view.page().runJavaScript("window.scrollTo(0, 1780);")
+    view.page().runJavaScript("window.scrollTo(0, document.body.scrollHeight - 1350);")
     QTimer.singleShot(700, grab_low)
 
 

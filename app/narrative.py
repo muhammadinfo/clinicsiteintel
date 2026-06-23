@@ -232,7 +232,28 @@ box-shadow:0 8px 22px -20px rgba(0,0,0,.25);}
 .foot{font-size:13px;color:var(--ink3);line-height:1.55;margin-top:22px;
 padding:16px 20px;background:var(--card);border:1px solid var(--line);border-radius:16px;}
 sup{font-size:.68em;}
+.play{background:#0e0e12;border-radius:22px;padding:28px 30px;margin-top:30px;color:#e8e8ed;
+box-shadow:0 22px 54px -26px rgba(0,0,0,.55);}
+.play-kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#8a8a93;font-weight:700;}
+.play-h{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:5px 0 3px;color:#fff;}
+.play-sub{font-size:13px;color:#9a9aa3;margin-bottom:14px;}
+.play-blk{border-top:1px solid #26262e;padding:16px 0 2px;}
+.play-blk h4{font-size:15.5px;font-weight:700;color:#fff;margin-bottom:7px;}
+.play-blk p{font-size:14px;line-height:1.62;color:#c7c7d1;margin-bottom:9px;}
+.play-blk b{color:#fff;font-weight:700;}
+.play-grade{display:inline-block;padding:5px 14px;border-radius:980px;font-weight:800;font-size:13px;color:#0e0e12;}
+.play-seq{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:8px 0 4px;}
+.play-step{background:#17171d;border-radius:13px;padding:13px 15px;}
+.play-step .t{font-size:11.5px;color:#8a8a93;font-weight:700;letter-spacing:.04em;margin-bottom:5px;}
+.play-step .b{font-size:13px;color:#d4d4dd;line-height:1.48;}
+.offer-card{background:#17171d;border-radius:14px;padding:15px 17px;margin:6px 0 4px;}
+.offer-card .ol{font-size:13px;color:#a8a8b2;margin:5px 0;}
+.offer-card .ol b{color:#fff;}
+.offer-stmt{background:#1c2a1c;border:1px solid #2f5a2f;border-radius:14px;padding:14px 17px;
+margin-top:10px;font-size:14.5px;line-height:1.55;color:#d7f0d7;}
+.offer-stmt b{color:#fff;}
 @media(max-width:640px){
+.play-seq{grid-template-columns:1fr;}.play{padding:22px 18px;}.play-h{font-size:21px;}
 body{padding:18px 14px 48px;}
 .addr{font-size:23px;}
 .hero{grid-template-columns:1fr;gap:18px;padding:22px 20px;border-radius:20px;}
@@ -366,6 +387,7 @@ def build_summary_html(rep: dict) -> str:
 
     cons = build_consultant_read(rep)  # reuse the prose paragraphs (skip its table)
     prose = cons.split("</table>", 1)[1] if "</table>" in cons else cons
+    playbook_html = build_opening_playbook(rep)
 
     # ---- Disease burden & demand surface (CDC PLACES + epidemiology) ----
     demand_html = ""
@@ -502,6 +524,8 @@ def build_summary_html(rep: dict) -> str:
   <div class="sec-title">The consultant's read</div>
   <div class="prose">{prose}</div>
 
+  {playbook_html}
+
   {notes_html}
 
   <div class="foot">Real-estate-specific factors (rent, build-out, HVAC) are deliberately held neutral until you price
@@ -513,3 +537,75 @@ function _csiH(){{try{{parent.postMessage({{csiHeight:document.body.scrollHeight
 window.addEventListener('load',_csiH);setTimeout(_csiH,300);setTimeout(_csiH,1200);
 </script>
 </body></html>"""
+
+
+def build_opening_playbook(rep: dict) -> str:
+    """A go-to-market 'opening playbook' box applying the Hormozi frameworks
+    (market test, Grand Slam Offer / value equation, risk-reversal pricing,
+    the Core Four lead-gen channels) grounded in this site's real numbers."""
+    demo = rep.get("demographics_zip") or rep.get("demographics_tract") or {}
+    income = demo.get("median_household_income")
+    sp = rep.get("spatial") or {}
+    econ = rep.get("econ") or {}
+    refs = rep.get("referrals", [])
+    comps = rep.get("competitors", [])
+    specialists = [c for c in comps if str(c.get("tier", "")).startswith("Specialist")]
+    n_md = sum(1 for r in refs if str(r.get("category", "")).startswith("Physician"))
+    colocated = sum(1 for r in refs if (r.get("distance_mi") if r.get("distance_mi") is not None else 9) <= 0.2)
+    cases = sp.get("huff_captured_pop") or econ.get("projected_cases")
+    cpc = econ.get("contribution_per_case")
+    sdists = [c.get("distance_mi") for c in specialists if c.get("distance_mi") is not None]
+    nearest = min(sdists) if sdists else None
+    n_opts = len(specialists) + 1
+
+    sc = 0
+    if income and income >= 100000: sc += 1
+    if income and income >= 130000: sc += 1
+    if cases and cases >= 300: sc += 1
+    grade, gcol = ("A", "#34c759") if sc >= 3 else (("B", "#ffd60a") if sc >= 2 else ("C", "#ff9f0a"))
+
+    cases_txt = f"~<b>{cases:,.0f}</b> addressable OSA/TMD cases a year" if cases else "a real pool of OSA/TMD cases"
+    inc_txt = _money(income) if income else "an above-average income"
+    co_txt = (f" &mdash; <b>{colocated}</b> of them in or beside your building" if colocated else "")
+    cpc_txt = _money(cpc) if cpc else "a strong"
+    near_txt = (f"the nearest credentialed rival ~{nearest:.1f}&nbsp;mi away" if nearest is not None
+                else "few credentialed rivals nearby")
+
+    return f'''
+  <div class="play">
+    <div class="play-kicker">Opening playbook</div>
+    <div class="play-h">How to open strong here</div>
+    <div class="play-sub">Go-to-market strategy, structured on the Hormozi playbook and grounded in this site's numbers.</div>
+
+    <div class="play-blk"><h4>1 &middot; The market is the lever &nbsp;<span class="play-grade" style="background:{gcol};">Grade {grade}</span></h4>
+    <p>The offer matters less than <b>who you sell to</b>. Here you have {cases_txt} in an affluent ZIP (median income <b>{inc_txt}</b>), and OSA is <b>~80% undiagnosed</b> &mdash; pain, purchasing power, and a problem people don't yet know is fixable. That's a starving crowd: lead with <b>awareness</b>, not discounts.</p></div>
+
+    <div class="play-blk"><h4>2 &middot; Your Grand Slam Offer</h4>
+    <div class="offer-card">
+      <div class="ol">Value = (Dream outcome &times; Likelihood) &divide; (Time &times; Effort)</div>
+      <div class="ol"><b>Dream outcome &uarr;</b> &mdash; end the jaw / face / head pain and sleep through the night, <b>without surgery or CPAP</b>.</div>
+      <div class="ol"><b>Likelihood &uarr;</b> &mdash; a board-certified orofacial-pain credential + a results guarantee (you're 1 of {n_opts} credentialed options, {near_txt}, so proof beats promises).</div>
+      <div class="ol"><b>Time &darr;</b> &mdash; a custom oral appliance in weeks, first consult this week &mdash; vs months of surgery or PT.</div>
+      <div class="ol"><b>Effort &darr;</b> &mdash; conservative, in-office, and you coordinate with their own physician.</div>
+    </div>
+    <div class="offer-stmt"><b>The offer:</b> &ldquo;Stop the pain and sleep again in 90 days &mdash; a custom, non-surgical appliance fitted by a board-certified specialist, coordinated with your doctor, backed by our results guarantee.&rdquo;</div></div>
+
+    <div class="play-blk"><h4>3 &middot; Price to the outcome, reverse the risk</h4>
+    <p>This is a <b>cash-pay, premium</b> market &mdash; price to the result, not the lab cost. Your contribution per case is ~<b>{cpc_txt}</b>; <b>stack value</b> (imaging, follow-ups, physician coordination) and hold price rather than discount. Then <b>reverse the risk</b>: &ldquo;If your symptoms aren't meaningfully better in 90 days, we keep adjusting at no additional appliance fee.&rdquo; A guarantee converts proof-seeking patients better than any price cut.</p></div>
+
+    <div class="play-blk"><h4>4 &middot; Lead generation &mdash; the Core Four, ranked for this site</h4>
+    <p><b>&#9312; Warm / referral outreach (your #1 channel).</b> <b>{n_md}</b> physicians &mdash; sleep medicine, ENT, neurology, primary care &mdash; sit in your catchment{co_txt}. Build the referral machine: lunch-and-learns, a one-page referral pad, sleep-study reciprocity, same-week scheduling for their patients. Cheapest, fastest pipeline you have.</p>
+    <p><b>&#9313; Educational content.</b> Capitalize on the 80% undiagnosed &mdash; &ldquo;Is your headache actually TMJ?&rdquo;, a 60-second OSA self-screen. You're <b>creating</b> demand, not fighting for it.</p>
+    <p><b>&#9314; Paid ads.</b> Geo-target the affluent ZIP; retarget everyone who watches your content.</p>
+    <p><b>&#9315; Cold outreach.</b> To PCPs and general dentists who aren't referring yet.</p></div>
+
+    <div class="play-blk"><h4>5 &middot; Win the math</h4>
+    <p>With ~<b>{cpc_txt}</b> contribution per case &mdash; plus maintenance and appliance-replacement value beyond it &mdash; you can profitably <b>spend more to acquire a patient</b> than a generalist can. Hormozi's edge: whoever can spend the most to acquire a customer wins. Track LTV:CAC and outspend on the channels that convert.</p></div>
+
+    <div class="play-blk"><h4>6 &middot; First 90 days</h4>
+    <div class="play-seq">
+      <div class="play-step"><div class="t">DAYS 0&ndash;30 &middot; FOUNDATION</div><div class="b">Visit your top referrers, run lunch-and-learns, stand up Google Business + a review-request system, put the lead magnet (free OSA/TMJ screen) live.</div></div>
+      <div class="play-step"><div class="t">DAYS 31&ndash;60 &middot; MOMENTUM</div><div class="b">Weekly educational content, paid ads on, publish the guarantee-backed offer, reactivate referrers who haven't sent yet.</div></div>
+      <div class="play-step"><div class="t">DAYS 61&ndash;90 &middot; SCALE</div><div class="b">Double down on what converts, add scarcity (limited new-patient slots), formalize referral reciprocity.</div></div>
+    </div></div>
+  </div>'''
