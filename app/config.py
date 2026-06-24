@@ -31,6 +31,15 @@ DEFAULTS = {
     "mapbox_key": "",      # drive-time isochrones (free tier; OSRM fallback)
     "anthropic_key": "",   # Claude Vision listing read (paid)
     "apify_key": "",       # live LoopNet/Crexi listings (paid; else sample/manual)
+    # Live academy/board credential lookup. OFF by default: querying the AADSM,
+    # AAOP/ABOP, AASM and AAO-HNS provider finders at report time is against
+    # those sites' terms of use — enable only if you accept that responsibility.
+    # When on, one ZIP+radius query per academy per report is made, cached, and
+    # rate-limited; results feed the same name+state cross-match as the local
+    # credential registry.
+    "live_credential_lookup": False,
+    "live_credential_radius_mi": 10,
+    "live_credential_sources": ["AADSM", "AAOP", "AASM", "AAO-HNS"],
 }
 
 

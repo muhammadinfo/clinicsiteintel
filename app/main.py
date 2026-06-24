@@ -9,8 +9,8 @@ Clinic / Facial Pain LLC.
 import sys
 import traceback
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont, QColor, QPixmap
+from PySide6.QtCore import Qt, QThread, Signal, QMarginsF
+from PySide6.QtGui import QFont, QColor, QPixmap, QPageLayout, QPageSize
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -246,8 +246,12 @@ class MainWindow(QMainWindow):
         self.address_input.setPlaceholderText("Enter a full address, e.g. 2220 Lynn Rd, Thousand Oaks, CA 91360")
         self.run_btn = QPushButton("Run Report")
         self.run_btn.clicked.connect(self.on_run_report)
+        self.export_pdf_btn = QPushButton("⬇ Export PDF")
+        self.export_pdf_btn.setEnabled(False)
+        self.export_pdf_btn.clicked.connect(self.on_export_pdf)
         search_row.addWidget(self.address_input, 4)
         search_row.addWidget(self.run_btn, 1)
+        search_row.addWidget(self.export_pdf_btn, 1)
         layout.addLayout(search_row)
 
         self.progress_label = QLabel("")
@@ -846,9 +850,42 @@ class MainWindow(QMainWindow):
         self.render_report(rep)
         self.refresh_saved_list()
 
+    def on_export_pdf(self):
+        if not self.current_report:
+            QMessageBox.information(self, "Nothing to export", "Run a report first.")
+            return
+        addr = (self.current_report.get("address_input") or "report").strip()
+        safe = "".join(c if c.isalnum() or c in " -_" else "" for c in addr).strip().replace(" ", "_")[:60] or "report"
+        default_name = f"ClinicSiteIntel_{safe}.pdf"
+        path, _ = QFileDialog.getSaveFileName(self, "Export report as PDF", default_name, "PDF files (*.pdf)")
+        if not path:
+            return
+        layout = QPageLayout(QPageSize(QPageSize.Letter), QPageLayout.Portrait,
+                              QMarginsF(14, 12, 14, 14), QPageLayout.Millimeter)
+        self.export_pdf_btn.setEnabled(False)
+        self.export_pdf_btn.setText("Exporting…")
+
+        page = self.summary_tab.page()
+
+        def _done(finished_path, ok):
+            try:
+                page.pdfPrintingFinished.disconnect(_done)
+            except (TypeError, RuntimeError):
+                pass
+            self.export_pdf_btn.setEnabled(True)
+            self.export_pdf_btn.setText("⬇ Export PDF")
+            if ok:
+                self.progress_label.setText(f"Saved PDF: {finished_path}")
+            else:
+                QMessageBox.critical(self, "Export failed", "Could not write the PDF. Check the path and try again.")
+
+        page.pdfPrintingFinished.connect(_done)
+        page.printToPdf(path, layout)
+
     # ---------------- Rendering ----------------
     def render_report(self, rep: dict):
         self.current_report = rep
+        self.export_pdf_btn.setEnabled(True)
         self._render_summary(rep)
         self._render_demographics(rep)
         self._render_competitors(rep)
@@ -1116,7 +1153,7 @@ class MainWindow(QMainWindow):
     def _render_competitors(self, rep):
         comps = rep.get("competitors", [])
         table = self.competitors_table
-        cols = ["Tier", "Name", "Address", "Dist (mi)", "Score", "Verification", "Website", "Phone"]
+        cols = ["Tier", "Name", "Address", "Dist (mi)", "Score", "Credentials", "Verification", "Website", "Phone"]
         table.setSortingEnabled(False)   # don't reorder mid-populate
         table.setColumnCount(len(cols))
         table.setHorizontalHeaderLabels(cols)
@@ -1129,6 +1166,7 @@ class MainWindow(QMainWindow):
                 c.get("address", ""),
                 f"{c.get('distance_mi', 0):.1f}" if c.get("distance_mi") is not None else "",
                 str(c.get("competition_score", 0)),
+                " · ".join(c.get("credentials", [])) or "—",
                 c.get("verification_note", ""),
                 c.get("website") or "",
                 c.get("phone") or "",
@@ -1169,7 +1207,7 @@ class MainWindow(QMainWindow):
     def _render_referrals(self, rep):
         refs = rep.get("referrals", [])
         table = self.referrals_table
-        cols = ["Type", "Name", "Specialty", "Address", "Dist (mi)", "Fit Score", "Phone"]
+        cols = ["Type", "Name", "Specialty", "Address", "Dist (mi)", "Fit Score", "Phone", "Credentials"]
         table.setSortingEnabled(False)
         table.setColumnCount(len(cols))
         table.setHorizontalHeaderLabels(cols)
@@ -1185,6 +1223,7 @@ class MainWindow(QMainWindow):
                 f"{r.get('distance_mi', 0):.1f}" if r.get("distance_mi") is not None else "",
                 str(r.get("referral_score", "")),
                 r.get("phone", "") or "",
+                " · ".join(r.get("credentials", [])) or "—",
             ]
             for j, v in enumerate(vals):
                 item = _SortItem(v)

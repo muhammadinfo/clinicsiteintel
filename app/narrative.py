@@ -127,18 +127,27 @@ def build_consultant_read(rep: dict, pal: dict = None) -> str:
     if n_md:
         co = (f" — and <b>{len(colocated)}</b> are clustered within ~0.2 mi of the site itself"
               if colocated else "")
+        n_ref_cred = sum(1 for r in refs if r.get("credentials"))
+        cred_ref = (f" <b>{n_ref_cred}</b> are confirmed against the sleep-medicine (AASM) or ENT (AAO-HNS) "
+                    f"academy rosters — verified, active referrers rather than just registry hits."
+                    if n_ref_cred else "")
         paras.append(
             f"<b>Referral access is the second engine (25%).</b> I count <b>{n_md}</b> referring physicians in the "
-            f"catchment — sleep medicine, ENT, neurology, primary care{co}. For a referral-fed specialty that's the "
+            f"catchment — sleep medicine, ENT, neurology, primary care{co}.{cred_ref} For a referral-fed specialty that's the "
             f"single most valuable thing a site can offer, which is why a doctor on your block counts for far more here "
             f"than one across the ZIP.")
 
     if specialists:
         near = f"the nearest about <b>{nearest:.1f} mi</b> away" if nearest is not None else "nearby"
         verdict_word = "near you, but not on top of you" if (nearest or 9) >= 1 else "uncomfortably close"
+        n_cred = sum(1 for c in specialists if c.get("credentials"))
+        cred_sentence = ""
+        if n_cred:
+            cred_sentence = (f" Of these, <b>{n_cred}</b> carry a verified academy/board credential "
+                             f"(AAOP·ABOP or AADSM) cross-matched outside the NPI Registry — the hardest rivals to displace.")
         paras.append(
             f"<b>Competition trims, it doesn't sink (10%, a deduction).</b> There are <b>{len(specialists)}</b> "
-            f"credentialed orofacial-pain/TMJ/sleep specialists in the trade area, {near} — {verdict_word}. This is a "
+            f"credentialed orofacial-pain/TMJ/sleep specialists in the trade area, {near} — {verdict_word}.{cred_sentence} This is a "
             f"contested market, so the play is differentiation and referral relationships rather than being first; the "
             f"distance math is measured from each competitor's real street address, not a ZIP approximation.")
     else:
@@ -232,9 +241,15 @@ box-shadow:0 8px 22px -20px rgba(0,0,0,.25);}
 .foot{font-size:13px;color:var(--ink3);line-height:1.55;margin-top:22px;
 padding:16px 20px;background:var(--card);border:1px solid var(--line);border-radius:16px;}
 sup{font-size:.68em;}
-.play{background:#0e0e12;border-radius:22px;padding:28px 30px;margin-top:30px;color:#e8e8ed;
-box-shadow:0 22px 54px -26px rgba(0,0,0,.55);}
-.play-kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#8a8a93;font-weight:700;}
+.play{position:relative;overflow:hidden;border-radius:24px;padding:32px 32px 30px;margin-top:32px;color:#e8e8ed;
+background:radial-gradient(135% 120% at 0% 0%, #18181f 0%, #0d0d11 58%);
+box-shadow:0 28px 64px -28px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.05);}
+.play::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+background:linear-gradient(90deg,#34c759,#5e5ce6 50%,#0071e3);}
+.pn{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;border-radius:8px;
+background:#26262e;color:#fff;font-size:12.5px;font-weight:800;margin-right:11px;vertical-align:1px;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
+.play-kicker{font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:#5ed0b0;font-weight:800;}
 .play-h{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:5px 0 3px;color:#fff;}
 .play-sub{font-size:13px;color:#9a9aa3;margin-bottom:14px;}
 .play-blk{border-top:1px solid #26262e;padding:16px 0 2px;}
@@ -249,10 +264,28 @@ box-shadow:0 22px 54px -26px rgba(0,0,0,.55);}
 .offer-card{background:#17171d;border-radius:14px;padding:15px 17px;margin:6px 0 4px;}
 .offer-card .ol{font-size:13px;color:#a8a8b2;margin:5px 0;}
 .offer-card .ol b{color:#fff;}
-.offer-stmt{background:#1c2a1c;border:1px solid #2f5a2f;border-radius:14px;padding:14px 17px;
-margin-top:10px;font-size:14.5px;line-height:1.55;color:#d7f0d7;}
+.offer-stmt{background:linear-gradient(135deg,#173017,#102610);border:1px solid #2f6a2f;border-radius:15px;
+padding:16px 19px;margin-top:12px;font-size:15px;line-height:1.58;color:#dff3df;
+box-shadow:0 12px 32px -16px rgba(52,199,89,.4);}
 .offer-stmt b{color:#fff;}
+.tier-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0 4px;}
+.tier{background:#17171d;border:1px solid #2a2a32;border-radius:14px;padding:15px 15px 14px;position:relative;}
+.tier.hot{border-color:#34c759;box-shadow:0 0 0 1px #34c759,0 14px 34px -14px rgba(52,199,89,.42);transform:translateY(-3px);}
+.tier.hot .pr{color:#5ee27a;}
+.tier .tag{position:absolute;top:-9px;left:14px;background:#34c759;color:#0e0e12;font-size:10px;
+font-weight:800;padding:2px 10px;border-radius:980px;letter-spacing:.04em;}
+.tier .nm{font-size:13px;font-weight:700;color:#fff;letter-spacing:.02em;}
+.tier .pr{font-size:22px;font-weight:800;color:#fff;margin:5px 0 7px;}
+.tier .li{font-size:12px;color:#a8a8b2;line-height:1.55;}
+.script{background:#17171d;border-left:3px solid #5e5ce6;border-radius:0 12px 12px 0;padding:13px 17px;margin:8px 0 4px;}
+.script .ln{font-size:13.5px;color:#cfcfd8;line-height:1.58;margin:6px 0;}
+.script .ln b{color:#fff;}
+.adcard{background:#17171d;border-radius:12px;padding:13px 16px;margin:8px 0;}
+.adcard .hl{font-size:14.5px;font-weight:700;color:#fff;margin-bottom:4px;}
+.adcard .bd{font-size:13px;color:#a8a8b2;line-height:1.52;}
+.tier-note{font-size:12.5px;color:#8a8a93;margin-top:9px;font-style:italic;}
 @media(max-width:640px){
+.tier-grid{grid-template-columns:1fr;}
 .play-seq{grid-template-columns:1fr;}.play{padding:22px 18px;}.play-h{font-size:21px;}
 body{padding:18px 14px 48px;}
 .addr{font-size:23px;}
@@ -261,6 +294,22 @@ body{padding:18px 14px 48px;}
 .checks{grid-template-columns:1fr;}
 .fexpl{font-size:13.5px;}
 .tldr{font-size:15px;padding:18px 20px;}
+}
+.letterhead{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--line);
+padding-bottom:16px;margin-bottom:8px;}
+.letterhead .lh-name{font-size:15px;font-weight:800;color:var(--ink);}
+.letterhead .lh-sub{font-size:11.5px;color:var(--ink3);margin-top:1px;}
+.letterhead .lh-date{font-size:12px;color:var(--ink3);text-align:right;}
+.pdf-foot{font-size:10.5px;color:var(--ink3);text-align:center;margin-top:30px;border-top:1px solid var(--line);
+padding-top:12px;}
+@media print{
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+body{padding:0 6px;background:#fff;}
+.hero,.tldr,.factor,.check,.foot,.play{box-shadow:none;break-inside:avoid;}
+.factor,.check{border:1px solid #d8d8df;}
+.sec-title{break-after:avoid;}
+.play{break-inside:avoid;}
+.play-blk{break-inside:avoid;}
 }
 """
 
@@ -473,6 +522,21 @@ def build_summary_html(rep: dict) -> str:
             f"interval <b>{p05}&ndash;{p95}</b>.{mo} Each input's share of that uncertainty (first-order Sobol):"
             f"</div><div style='margin-top:12px;'>{bars}</div></div>")
 
+    cred = rep.get("credential_summary") or {}
+    cred_html = ""
+    if cred:
+        cc, rc = cred.get("competitors_credentialed", 0), cred.get("referrals_credentialed", 0)
+        if cc or rc or cred.get("registry_entries"):
+            cred_html = (
+                "<div class='sec-title'>Credential cross-match</div>"
+                "<div class='factor'><div class='fexpl' style='font-size:14.5px;line-height:1.65;'>"
+                f"Beyond the NPI Registry, competitors and referrers are cross-matched against professional-academy "
+                f"and board rosters &mdash; <b>AAOP&middot;ABOP</b> and <b>AADSM</b> for orofacial-pain / dental-sleep "
+                f"rivals, <b>AASM</b> and <b>AAO-HNS</b> for sleep-medicine and ENT referrers. "
+                f"This pass tagged <b>{cc}</b> competitor(s) and <b>{rc}</b> referrer(s) with a verified credential. "
+                f"<span style='color:var(--ink3);'>{cred.get('method','')}</span>"
+                "</div></div>")
+
     errs = rep.get("errors") or []
     notes_html = ""
     if errs:
@@ -481,8 +545,15 @@ def build_summary_html(rep: dict) -> str:
                       "<div class='foot' style='color:#9a6a00;'>"
                       f"<ul style='margin:0;padding-left:18px;'>{items}</ul></div>")
 
+    import datetime as _dt
+    gen_date = _dt.datetime.now().strftime("%B %d, %Y")
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_SUMMARY_CSS}</style></head>
 <body><div class="wrap">
+  <div class="letterhead">
+    <div><div class="lh-name">Advanced Dental Sleep &amp; TMJ Clinic</div>
+    <div class="lh-sub">ClinicSiteIntel &middot; Clinic Site Assessment Report</div></div>
+    <div class="lh-date">Generated {gen_date}</div>
+  </div>
   <div class="addr-kicker">Site assessment</div>
   <div class="addr">{addr}</div>
   <div class="coords">{geo.get('lat','')}, {geo.get('lon','')} &nbsp;&middot;&nbsp; ZIP {geo.get('zip_code') or 'n/a'}</div>
@@ -520,6 +591,7 @@ def build_summary_html(rep: dict) -> str:
   {demand_html}
   {econ_html}
   {unc_html}
+  {cred_html}
 
   <div class="sec-title">The consultant's read</div>
   <div class="prose">{prose}</div>
@@ -531,6 +603,9 @@ def build_summary_html(rep: dict) -> str:
   <div class="foot">Real-estate-specific factors (rent, build-out, HVAC) are deliberately held neutral until you price
   a specific suite on the Real Estate tab. Think of this score as the quality of the <b>location</b>, before the
   economics of any one lease.</div>
+
+  <div class="pdf-foot">ClinicSiteIntel &middot; Confidential market assessment prepared for internal use &middot;
+  Figures are model estimates from public data sources, not a guarantee of clinical or financial outcomes.</div>
 </div>
 <script>
 function _csiH(){{try{{parent.postMessage({{csiHeight:document.body.scrollHeight}},'*');}}catch(e){{}}}}
@@ -557,6 +632,9 @@ def build_opening_playbook(rep: dict) -> str:
     sdists = [c.get("distance_mi") for c in specialists if c.get("distance_mi") is not None]
     nearest = min(sdists) if sdists else None
     n_opts = len(specialists) + 1
+    geo = rep.get("geo") or {}
+    _parts = [p.strip() for p in (geo.get("matched_address") or rep.get("address_input") or "").split(",")]
+    city = (_parts[-3] if len(_parts) >= 4 else _parts[-2] if len(_parts) >= 3 else "your area").title() or "your area"
 
     sc = 0
     if income and income >= 100000: sc += 1
@@ -577,10 +655,10 @@ def build_opening_playbook(rep: dict) -> str:
     <div class="play-h">How to open strong here</div>
     <div class="play-sub">Go-to-market strategy, structured on the Hormozi playbook and grounded in this site's numbers.</div>
 
-    <div class="play-blk"><h4>1 &middot; The market is the lever &nbsp;<span class="play-grade" style="background:{gcol};">Grade {grade}</span></h4>
+    <div class="play-blk"><h4><span class="pn">1</span>The market is the lever &nbsp;<span class="play-grade" style="background:{gcol};">Grade {grade}</span></h4>
     <p>The offer matters less than <b>who you sell to</b>. Here you have {cases_txt} in an affluent ZIP (median income <b>{inc_txt}</b>), and OSA is <b>~80% undiagnosed</b> &mdash; pain, purchasing power, and a problem people don't yet know is fixable. That's a starving crowd: lead with <b>awareness</b>, not discounts.</p></div>
 
-    <div class="play-blk"><h4>2 &middot; Your Grand Slam Offer</h4>
+    <div class="play-blk"><h4><span class="pn">2</span>Your Grand Slam Offer</h4>
     <div class="offer-card">
       <div class="ol">Value = (Dream outcome &times; Likelihood) &divide; (Time &times; Effort)</div>
       <div class="ol"><b>Dream outcome &uarr;</b> &mdash; end the jaw / face / head pain and sleep through the night, <b>without surgery or CPAP</b>.</div>
@@ -590,22 +668,48 @@ def build_opening_playbook(rep: dict) -> str:
     </div>
     <div class="offer-stmt"><b>The offer:</b> &ldquo;Stop the pain and sleep again in 90 days &mdash; a custom, non-surgical appliance fitted by a board-certified specialist, coordinated with your doctor, backed by our results guarantee.&rdquo;</div></div>
 
-    <div class="play-blk"><h4>3 &middot; Price to the outcome, reverse the risk</h4>
+    <div class="play-blk"><h4><span class="pn">3</span>Price to the outcome, reverse the risk</h4>
     <p>This is a <b>cash-pay, premium</b> market &mdash; price to the result, not the lab cost. Your contribution per case is ~<b>{cpc_txt}</b>; <b>stack value</b> (imaging, follow-ups, physician coordination) and hold price rather than discount. Then <b>reverse the risk</b>: &ldquo;If your symptoms aren't meaningfully better in 90 days, we keep adjusting at no additional appliance fee.&rdquo; A guarantee converts proof-seeking patients better than any price cut.</p></div>
 
-    <div class="play-blk"><h4>4 &middot; Lead generation &mdash; the Core Four, ranked for this site</h4>
+    <div class="play-blk"><h4><span class="pn">4</span>Lead generation &mdash; the Core Four, ranked for this site</h4>
     <p><b>&#9312; Warm / referral outreach (your #1 channel).</b> <b>{n_md}</b> physicians &mdash; sleep medicine, ENT, neurology, primary care &mdash; sit in your catchment{co_txt}. Build the referral machine: lunch-and-learns, a one-page referral pad, sleep-study reciprocity, same-week scheduling for their patients. Cheapest, fastest pipeline you have.</p>
     <p><b>&#9313; Educational content.</b> Capitalize on the 80% undiagnosed &mdash; &ldquo;Is your headache actually TMJ?&rdquo;, a 60-second OSA self-screen. You're <b>creating</b> demand, not fighting for it.</p>
     <p><b>&#9314; Paid ads.</b> Geo-target the affluent ZIP; retarget everyone who watches your content.</p>
     <p><b>&#9315; Cold outreach.</b> To PCPs and general dentists who aren't referring yet.</p></div>
 
-    <div class="play-blk"><h4>5 &middot; Win the math</h4>
+    <div class="play-blk"><h4><span class="pn">5</span>Win the math</h4>
     <p>With ~<b>{cpc_txt}</b> contribution per case &mdash; plus maintenance and appliance-replacement value beyond it &mdash; you can profitably <b>spend more to acquire a patient</b> than a generalist can. Hormozi's edge: whoever can spend the most to acquire a customer wins. Track LTV:CAC and outspend on the channels that convert.</p></div>
 
-    <div class="play-blk"><h4>6 &middot; First 90 days</h4>
+    <div class="play-blk"><h4><span class="pn">6</span>First 90 days</h4>
     <div class="play-seq">
       <div class="play-step"><div class="t">DAYS 0&ndash;30 &middot; FOUNDATION</div><div class="b">Visit your top referrers, run lunch-and-learns, stand up Google Business + a review-request system, put the lead magnet (free OSA/TMJ screen) live.</div></div>
       <div class="play-step"><div class="t">DAYS 31&ndash;60 &middot; MOMENTUM</div><div class="b">Weekly educational content, paid ads on, publish the guarantee-backed offer, reactivate referrers who haven't sent yet.</div></div>
       <div class="play-step"><div class="t">DAYS 61&ndash;90 &middot; SCALE</div><div class="b">Double down on what converts, add scarcity (limited new-patient slots), formalize referral reciprocity.</div></div>
     </div></div>
+
+    <div class="play-blk"><h4><span class="pn">7</span>Cash-pay price tiers &mdash; anchor high, stack value</h4>
+    <div class="tier-grid">
+      <div class="tier"><div class="nm">RELIEF</div><div class="pr">$2,900</div>
+        <div class="li">Diagnostic consult, custom oral appliance, and 3 fittings &amp; follow-ups.</div></div>
+      <div class="tier hot"><div class="tag">MOST POPULAR</div><div class="nm">RESOLUTION</div><div class="pr">$4,800</div>
+        <div class="li">Everything in Relief, plus CBCT imaging, bite optimization, a 6-month outcome program, physician coordination, and the results guarantee.</div></div>
+      <div class="tier"><div class="nm">TOTAL CARE</div><div class="pr">$6,900</div>
+        <div class="li">Everything in Resolution, plus appliance-replacement warranty, sleep-study coordination, priority same-week access, and annual maintenance.</div></div>
+    </div>
+    <div class="tier-note">Illustrative anchors &mdash; set your own fees. Listing the high tier first makes the middle read as the obvious value (price anchoring).</div></div>
+
+    <div class="play-blk"><h4><span class="pn">8</span>Referral lunch-and-learn &mdash; a 15-minute script</h4>
+    <div class="script">
+      <div class="ln"><b>Open:</b> &ldquo;Thanks for 15 minutes &mdash; my goal is to make your sleep-apnea and chronic-headache patients easier to manage, not add to your plate.&rdquo;</div>
+      <div class="ln"><b>The gap:</b> &ldquo;About 80% of OSA is undiagnosed, and a lot of 'tension headaches' are actually TMJ. Those patients keep coming back without resolution.&rdquo;</div>
+      <div class="ln"><b>Your role:</b> &ldquo;I'm a board-certified orofacial-pain specialist &mdash; I handle the appliance therapy and report straight back to you, so the patient stays yours.&rdquo;</div>
+      <div class="ln"><b>Make it effortless:</b> &ldquo;Here's a one-page referral pad and a same-week scheduling line. Your patients are seen fast; you get a note after every visit.&rdquo;</div>
+      <div class="ln"><b>The ask:</b> &ldquo;Could we start with your next 2&ndash;3 patients who fit? I'll circle back with their outcomes.&rdquo;</div>
+    </div></div>
+
+    <div class="play-blk"><h4><span class="pn">9</span>Paid-ads starters &mdash; geo-targeted to {city}</h4>
+    <div class="adcard"><div class="hl">&ldquo;Still exhausted after a full night's sleep?&rdquo;</div>
+      <div class="bd">It could be sleep apnea &mdash; and you may not need a CPAP. A board-certified specialist in {city} fits custom, comfortable appliances. <b>Take the free 60-second screening &rarr;</b></div></div>
+    <div class="adcard"><div class="hl">&ldquo;Jaw pain, clicking, or daily headaches?&rdquo;</div>
+      <div class="bd">It's often TMJ &mdash; and it's treatable without surgery. See a board-certified orofacial-pain specialist in {city}. <b>Book a consult this week &rarr;</b></div></div></div>
   </div>'''

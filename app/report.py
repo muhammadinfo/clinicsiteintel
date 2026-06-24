@@ -92,6 +92,13 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
     except Exception as e:
         report["errors"].append(f"Referral search failed: {e}")
 
+    step("Cross-matching academy / board credentials (AAOP·ABOP, AADSM, AASM, AAO-HNS)...")
+    try:
+        import credentials
+        credentials.enrich_report(report)
+    except Exception as e:
+        report["errors"].append(f"Credential cross-match failed: {e}")
+
     step("Building real-estate search links...")
     city_state_guess = address.split(",")[-2].strip() + ", CA" if "," in address else address
     report["realestate_links"] = realestate.generate_search_links(city_state_guess)
