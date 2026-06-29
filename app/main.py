@@ -412,6 +412,13 @@ class MainWindow(QMainWindow):
         self.ss_status.setStyleSheet("color:#6e6e73; font-size:12px;")
         v.addWidget(self.ss_status)
 
+        # Best-to-worst ranked summary of every analyzed listing.
+        self.ss_ranking = QTextEdit(readOnly=True)
+        self.ss_ranking.setStyleSheet("border:1px solid #e5e5ea; border-radius:10px; background:#fff;")
+        self.ss_ranking.setMaximumHeight(230)
+        self.ss_ranking.hide()
+        v.addWidget(self.ss_ranking)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -529,6 +536,7 @@ class MainWindow(QMainWindow):
         self._clear_sitescout_cards()
         self._ss_ctx_cache.clear()
         self._ss_done.clear()
+        self.ss_ranking.hide()
         self.ss_status.setText("Cleared. Paste a batch and Import to start fresh.")
 
     @staticmethod
@@ -585,11 +593,52 @@ class MainWindow(QMainWindow):
         self._ss_done.add(key)
         self._add_verdict_card(pl, v)
         self._ss_rows.append((pl, v))
+        self._rerank_sitescout()
+
+    def _rerank_sitescout(self):
+        """Build a best-to-worst ranked summary of every analyzed listing."""
+        if not self._ss_rows:
+            self.ss_ranking.hide()
+            return
+        ranked = sorted(self._ss_rows, key=lambda r: -(r[1].get("score") or 0))
+        rows = ""
+        for i, (pl, v) in enumerate(ranked, 1):
+            color = self._verdict_color(v["verdict"])
+            price = f"${pl['price']:,.0f}/yr" if pl.get("price") else "—"
+            cap = v.get("capture_score")
+            cap_s = f"{cap}%" if cap is not None else "—"
+            rows += (
+                f"<tr style='border-bottom:1px solid #f0f0f3;'>"
+                f"<td style='padding:5px 8px;font-weight:800;color:#8e8e93;'>{i}</td>"
+                f"<td style='padding:5px 8px;color:#1c1c1e;'>{pl.get('address','')}</td>"
+                f"<td style='padding:5px 8px;color:#6e6e73;'>{price}</td>"
+                f"<td style='padding:5px 8px;text-align:center;'>"
+                f"<b style='color:{color};'>{v['verdict']}</b></td>"
+                f"<td style='padding:5px 8px;text-align:right;font-weight:800;color:{color};'>{v['score']}</td>"
+                f"<td style='padding:5px 8px;text-align:right;color:#6e6e73;'>{cap_s}</td></tr>")
+        html = (
+            "<div style='font-family:Segoe UI;'>"
+            "<div style='font-weight:800;font-size:13px;color:#1c1c1e;padding:2px 4px 8px;'>"
+            f"Ranked best → worst &nbsp;<span style='color:#8e8e93;font-weight:600;'>"
+            f"({len(ranked)} listings)</span></div>"
+            "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
+            "<tr style='color:#8e8e93;font-size:10px;letter-spacing:.04em;'>"
+            "<th style='text-align:left;padding:0 8px;'>#</th>"
+            "<th style='text-align:left;padding:0 8px;'>ADDRESS</th>"
+            "<th style='text-align:left;padding:0 8px;'>PRICE</th>"
+            "<th style='text-align:center;padding:0 8px;'>VERDICT</th>"
+            "<th style='text-align:right;padding:0 8px;'>SCORE</th>"
+            "<th style='text-align:right;padding:0 8px;'>CAPTURE</th></tr>"
+            f"{rows}</table></div>")
+        self.ss_ranking.setHtml(html)
+        self.ss_ranking.show()
 
     def _on_sitescout_done(self, n):
         self._ss_busy(False)
+        self._rerank_sitescout()
         self.ss_status.setText(f"Done — {len(self._ss_rows)} total analyzed "
-                               f"({n} this run). Paste more and Import to add to the batch.")
+                               f"({n} this run), ranked best to worst above. "
+                               "Paste more and Import to add to the batch.")
 
     def on_sitescout_export(self):
         if not self._ss_rows:

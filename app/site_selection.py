@@ -15,6 +15,16 @@ Rubric (matches the consultant brief):
 Where a category has no live data source yet, it is scored neutrally and flagged
 LOW confidence rather than guessed — per the brief's instruction.
 """
+import re
+
+
+def _norm_street(a: str) -> str:
+    """Normalize 'street number + street name' so a referrer at the SAME building
+    address can be matched (suite numbers stripped)."""
+    a = (a or "").upper()
+    m = re.match(r"\s*(\d+)\s+([A-Z0-9 ]+?)(,| STE| SUITE| #| APT|$)", a)
+    return (m.group(1) + " " + m.group(2).strip()) if m else ""
+
 
 # Referral specialties that actually send Orofacial Pain / DSM patients.
 _REFERRAL_BUCKETS = {
@@ -69,22 +79,42 @@ def score_site(rep: dict) -> dict:
     comps = rep.get("competitors", [])
     specs = [c for c in comps if str(c.get("tier", "")).startswith("Specialist")]
 
+    tgt_street = _norm_street((rep.get("geo") or {}).get("matched_address") or "")
     counts, onsite = {}, {}
+    in_building = near = within2 = 0   # proximity bands (real geocoded distance)
     for r in refs:
         b = _bucket(r.get("specialty"))
         counts[b] = counts.get(b, 0) + 1
-        if (r.get("distance_mi") if r.get("distance_mi") is not None else 9) <= 0.12:
+        d = r.get("distance_mi")
+        same = bool(tgt_street) and _norm_street(r.get("address")) == tgt_street
+        zip_fallback = d is not None and abs(d - 0.6) < 0.001   # ZIP-centroid placeholder
+        if same:
+            in_building += 1
             onsite[b] = onsite.get(b, 0) + 1
+        elif d is not None and not zip_fallback and d <= 0.5:
+            near += 1
+        if d is not None and not zip_fallback and d <= 2.0 and not same:
+            within2 += 1
     n_ref = sum(v for k, v in counts.items() if k in _REFERRAL_BUCKETS)
-    n_onsite = sum(v for k, v in onsite.items() if k in _REFERRAL_BUCKETS)
+    n_onsite = in_building
 
     spec_dists = [c.get("distance_mi") for c in specs if c.get("distance_mi") is not None]
     nearest = min(spec_dists) if spec_dists else None
 
-    # ---- category scores (each capped at its max) ----
-    referral_pts = round(rp / 100 * 30, 1)
-    building_pts = round(if_ / 100 * 20, 1)
-    hosp_proxy = min(1.0, (if_ / 100) * 0.6 + min(1.0, n_onsite / 15.0) * 0.4)
+    # ---- Referral Potential (30): BLEND of true proximity (same-building /
+    # nearby) and ZIP-level physician density. A standalone building with no
+    # in-building MDs can no longer max this out on ZIP density alone. ----
+    proximity = (min(1.0, in_building / 10.0) * 0.6
+                 + min(1.0, near / 12.0) * 0.3
+                 + min(1.0, within2 / 30.0) * 0.1)          # 0-1, building-anchored
+    density = rp / 100.0                                     # ZIP density (kept heavy)
+    referral_pts = round((0.55 * proximity + 0.45 * density) * 30, 1)
+
+    # ---- Medical Building Strength (20): dominated by physicians AT the address. ----
+    building_pts = round((min(1.0, in_building / 12.0) * 0.7 + (if_ / 100) * 0.3) * 20, 1)
+
+    # ---- Hospital ecosystem (10): proxy from real on-site/near medical density. ----
+    hosp_proxy = min(1.0, (if_ / 100) * 0.4 + min(1.0, (in_building + near) / 15.0) * 0.6)
     hospital_pts = round(hosp_proxy * 10, 1)
     competition_pts = round(cp / 100 * 25, 1)
     demo_pts = round(ds / 100 * 5, 1)
@@ -116,9 +146,11 @@ def score_site(rep: dict) -> dict:
         "color": color,
         "categories": [
             {"name": "Referral Potential", "score": referral_pts, "max": 30,
-             "basis": f"{n_ref} referring physicians ({n_onsite} on-site)", "confidence": "High"},
+             "basis": f"{in_building} in-building + {near} within ½ mi; {n_ref} in ZIP",
+             "confidence": "High"},
             {"name": "Medical Building Strength", "score": building_pts, "max": 20,
-             "basis": "On-site physician density & medical-hub signal", "confidence": "High"},
+             "basis": f"{in_building} physician(s) at this exact address",
+             "confidence": "High"},
             {"name": "Nearby Hospital Ecosystem", "score": hospital_pts, "max": 10,
              "basis": "Proxy from hub strength + on-site cluster", "confidence": "Low — hospital/imaging/sleep-lab proximity not yet measured"},
             {"name": "Competition Penalty", "score": competition_pts, "max": 25,
@@ -133,6 +165,8 @@ def score_site(rep: dict) -> dict:
         ],
         "deliverables": {
             "referring_physicians_total": n_ref,
+            "in_building_physicians": in_building,
+            "within_half_mile": near,
             "on_site_physicians": n_onsite,
             "by_specialty": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
             "specialist_competitors": len(specs),
