@@ -240,5 +240,12 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
     except Exception as e:
         report["errors"].append(f"Spatial models failed: {e}")
 
+    step("Scoring site against the Orofacial-Pain / TMJ / DSM selection rubric...")
+    try:
+        import site_selection
+        report["site_selection"] = site_selection.score_site(report)
+    except Exception as e:
+        report["errors"].append(f"Site-selection scoring failed: {e}")
+
     step("Report complete.")
     return report

@@ -333,6 +333,56 @@ def _zone_color(v):
     return "#ff3b30"
 
 
+def build_site_selection_html(rep: dict) -> str:
+    ss = rep.get("site_selection") or {}
+    if not ss:
+        return ""
+    cats = ss.get("categories", [])
+    rows = ""
+    for c in cats:
+        frac = (c["score"] / c["max"]) if c["max"] else 0
+        col = "#34c759" if frac >= 0.66 else "#ff9f0a" if frac >= 0.4 else "#ff3b30"
+        conf = c.get("confidence", "")
+        conf_col = "#ff3b30" if conf.startswith("Low") else "#ff9f0a" if conf.startswith("Medium") else "#86868b"
+        rows += (
+            "<div style='margin:11px 0;'>"
+            "<div style='display:flex;align-items:center;gap:12px;'>"
+            f"<div style='flex:1;font-size:14.5px;font-weight:600;'>{c['name']}</div>"
+            f"<div class='fchip' style='color:{col};'>{c['score']:g}<span style='color:var(--ink3);font-weight:600;'>/{c['max']}</span></div></div>"
+            "<div class='fbar-row' style='margin:6px 0 3px;'>"
+            f"<div class='fbar'><div class='fbar-fill' style='width:{max(2,frac*100):.0f}%;background:{col};'></div></div></div>"
+            f"<div style='font-size:12.5px;color:var(--ink3);'>{c.get('basis','')} &middot; "
+            f"<span style='color:{conf_col};'>Confidence: {conf}</span></div></div>")
+
+    d = ss.get("deliverables", {})
+    bysp = d.get("by_specialty", {})
+    chips = "".join(
+        f"<span style='display:inline-block;background:var(--card);border:1px solid var(--line);"
+        f"border-radius:980px;padding:4px 11px;margin:3px 4px 3px 0;font-size:12.5px;'>"
+        f"<b>{n}</b> {name}</span>"
+        for name, n in bysp.items() if name != "Other")
+    notcol = ", ".join(d.get("not_yet_collected", []))
+
+    return (
+        "<div class='sec-title'>Site-selection score &mdash; Orofacial Pain / TMJ / Dental Sleep</div>"
+        "<div class='factor'>"
+        "<div style='display:flex;align-items:flex-end;gap:14px;margin-bottom:4px;'>"
+        f"<div style='font-size:44px;font-weight:800;letter-spacing:-.02em;color:{ss.get('color','#1d1d1f')};'>{ss.get('total','—')}"
+        "<span style='font-size:20px;color:var(--ink3);'>/100</span></div>"
+        f"<div class='verdict-pill' style='background:{ss.get('color','#86868b')};margin:0 0 8px;font-size:13px;'>{ss.get('band','')}</div>"
+        f"<div style='font-size:13px;color:var(--ink3);margin:0 0 10px;'>base {ss.get('base','—')} + <b style='color:var(--ink2);'>{ss.get('bonus',0):g} bonus</b></div></div>"
+        f"<div style='font-size:13px;color:var(--ink3);margin-bottom:14px;'>100-point referral-driven rubric. {ss.get('confidence_overall','')}</div>"
+        f"{rows}"
+        "<div style='margin-top:14px;padding:13px 15px;background:var(--card);border-radius:12px;border:1px solid var(--line);'>"
+        f"<div style='font-size:11px;font-weight:700;color:var(--ink3);letter-spacing:.06em;'>REFERRAL ECOSYSTEM (geocoded)</div>"
+        f"<div style='margin-top:7px;'>{chips}</div></div>"
+        "<div style='margin-top:11px;padding:12px 15px;background:var(--card);border-radius:12px;border-left:3px solid #0071e3;'>"
+        f"<div style='font-size:11px;font-weight:700;color:var(--ink3);'>RECOMMENDATION</div>"
+        f"<div style='font-size:14px;color:var(--ink);margin-top:4px;'>{ss.get('recommendation','')}</div></div>"
+        f"<div style='font-size:12px;color:var(--ink3);margin-top:10px;font-style:italic;'>Not yet collected (would refine the score): {notcol}.</div>"
+        "</div>")
+
+
 def build_summary_html(rep: dict) -> str:
     inp = rep.get("lvi_inputs") or {}
     summ = rep.get("lvi_summary") or {}
@@ -522,6 +572,8 @@ def build_summary_html(rep: dict) -> str:
             f"interval <b>{p05}&ndash;{p95}</b>.{mo} Each input's share of that uncertainty (first-order Sobol):"
             f"</div><div style='margin-top:12px;'>{bars}</div></div>")
 
+    site_html = build_site_selection_html(rep)
+
     cred = rep.get("credential_summary") or {}
     cred_html = ""
     if cred:
@@ -575,6 +627,8 @@ def build_summary_html(rep: dict) -> str:
   </div>
 
   <div class="tldr">{tldr}</div>
+
+  {site_html}
 
   <div class="sec-title">What builds this score</div>
   {rows}
