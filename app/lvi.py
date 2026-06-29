@@ -122,8 +122,25 @@ def derive_if_from_medical_hub(referrals: list, competitors: list = None) -> flo
     return clip(50 + min(45, near * 7))
 
 
-def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42) -> dict:
-    sigma = inputs.sigma or {"ds": 8, "rp": 12, "if_": 15, "cp": 10, "of_": 12, "rc": 20}
+def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42,
+                    on_site_count: int = 0, competitor_count: int = 0) -> dict:
+    """Monte Carlo credible interval.
+
+    Adapt the standard deviations (sigma) based on data certainty: strong signals
+    (many on-site referrers, few competitors, dense medical hub) should have lower
+    uncertainty; weak signals should have higher uncertainty."""
+    if not inputs.sigma:
+        # Base sigmas are conservative defaults for mid-range inputs.
+        # Adapt down for high-confidence signals, up for weak ones.
+        ds_sigma = 8.0
+        rp_sigma = 12.0 - min(4, on_site_count / 5)  # more on-site → tighter
+        if__sigma = 15.0 - min(8, on_site_count / 3)  # more on-site MDs → much tighter
+        cp_sigma = 10.0 - min(5, 6 / max(1, competitor_count))  # fewer competitors → tighter
+        of_sigma = 12.0
+        rc_sigma = 20.0
+        sigma = {"ds": ds_sigma, "rp": rp_sigma, "if_": if__sigma, "cp": cp_sigma, "of_": of_sigma, "rc": rc_sigma}
+    else:
+        sigma = inputs.sigma
     rnd = random.Random(seed)
     draws = []
     for _ in range(n):

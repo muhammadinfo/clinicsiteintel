@@ -131,7 +131,11 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
         ds_sigma = max(5.0, min(22.0, 6.0 + rel * 120.0))
     sigma = {"ds": ds_sigma, "rp": 12, "if_": 15, "cp": 10, "of_": 12, "rc": 20}
     inputs = lvi.LVIInputs(ds=ds, rp=rp, if_=if_factor, cp=cp, of_=50.0, rc=50.0, sigma=sigma)
-    mc = lvi.monte_carlo_lvi(inputs)
+    # Count on-site referrers & competitors for adaptive uncertainty reduction.
+    on_site = sum(1 for r in referrals_list
+                  if (r.get("distance_mi") if r.get("distance_mi") is not None else 9) <= 0.2)
+    n_comp = len([c for c in comp_dicts if c.get("competition_score", 0) > 0])
+    mc = lvi.monte_carlo_lvi(inputs, on_site_count=on_site, competitor_count=n_comp)
     report["lvi_inputs"] = inputs.__dict__
     report["lvi_summary"] = mc
     report["lvi_sensitivity"] = lvi.first_order_sensitivity(inputs)
