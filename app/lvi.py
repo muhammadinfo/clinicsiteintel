@@ -131,11 +131,12 @@ def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42,
     uncertainty; weak signals should have higher uncertainty."""
     if not inputs.sigma:
         # Base sigmas are conservative defaults for mid-range inputs.
-        # Adapt down for high-confidence signals, up for weak ones.
+        # Adapt down for high-confidence signals: many on-site referrers and few
+        # competitors = much lower uncertainty. Adapt up for weak signals.
         ds_sigma = 8.0
-        rp_sigma = 12.0 - min(4, on_site_count / 5)  # more on-site → tighter
-        if__sigma = 15.0 - min(8, on_site_count / 3)  # more on-site MDs → much tighter
-        cp_sigma = 10.0 - min(5, 6 / max(1, competitor_count))  # fewer competitors → tighter
+        rp_sigma = max(4.0, 12.0 - on_site_count / 3)  # more on-site → much tighter
+        if__sigma = max(3.0, 15.0 - on_site_count / 2)  # more on-site MDs → much tighter
+        cp_sigma = max(2.0, 10.0 - 8.0 / max(1, competitor_count))  # fewer competitors → much tighter
         of_sigma = 12.0
         rc_sigma = 20.0
         sigma = {"ds": ds_sigma, "rp": rp_sigma, "if_": if__sigma, "cp": cp_sigma, "of_": of_sigma, "rc": rc_sigma}
