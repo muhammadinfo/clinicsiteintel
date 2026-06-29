@@ -84,27 +84,50 @@ NPPES_REFERRAL_TAXONOMIES = [
 ]
 
 
+def _norm_street(a: str) -> str:
+    """'street number + street name' (suite stripped) for same-building matching."""
+    import re
+    a = (a or "").upper()
+    m = re.match(r"\s*(\d+)\s+([A-Z0-9 ]+?)(,| STE| SUITE| #| APT|$)", a)
+    return (m.group(1) + " " + m.group(2).strip()) if m else ""
+
+
+def _dedup_key(name: str) -> str:
+    """Collapse 'C MALEKI MD INC' / 'C MALEKI MD INC.' to one provider."""
+    import re
+    return re.sub(r"[^a-z0-9 ]", "", (name or "").lower()).strip()
+
+
 def _find_referral_candidates_nppes(lat: float, lon: float, zip5: str, state: str,
-                                    per_taxonomy: int = 4) -> list[ReferralCandidate]:
+                                    per_taxonomy: int = 8, target_addr: str = "") -> list[ReferralCandidate]:
     """Credential-accurate referral discovery via the NPPES NPI Registry —
     finds sleep-medicine, ENT, neurology, primary-care and PT providers by
     their registered taxonomy, which a generic map search cannot do."""
     import nppes
+    tgt = _norm_street(target_addr)
     out: dict[tuple, ReferralCandidate] = {}
     for tax_desc, label, weight in NPPES_REFERRAL_TAXONOMIES:
         # Single-region search (fast): MD referrers are far less boundary-
         # sensitive than competitors, and 18 taxonomies × multiple prefixes
         # would make the report too slow.
         providers = nppes.search_by_taxonomy(tax_desc, zip5, state, is_specialist=False, limit=50)
-        # Geocode the closest handful to their REAL street address (the rest keep
-        # the centroid prefilter) so a same-building referrer reads ~0 mi instead
-        # of the ZIP-centroid ~0.6 mi — which is what makes a medical-hub site score.
-        nppes.attach_real_distances(providers, lat, lon, limit=4)
-        # Nearest first, keep the closest few per specialty.
-        providers = [p for p in providers if p.distance_mi is not None]
-        providers.sort(key=lambda p: p.distance_mi)
-        for p in providers[:per_taxonomy]:
-            key = (p.name.lower(), p.zip5)
+        # Physicians registered at the SAME street address are in-building: pin
+        # them to 0 mi (no geocoding needed) and ALWAYS keep them — they are the
+        # whole point of a medical-building site and must never be truncated.
+        same, rest = [], []
+        for p in providers:
+            if tgt and _norm_street(p.address) == tgt:
+                p.distance_mi = 0.0
+                same.append(p)
+            else:
+                rest.append(p)
+        # Geocode the closest handful of the rest to their REAL street address so
+        # a next-door referrer reads ~0 mi instead of the ZIP-centroid ~0.6 mi.
+        nppes.attach_real_distances(rest, lat, lon, limit=6)
+        rest = [p for p in rest if p.distance_mi is not None]
+        rest.sort(key=lambda p: p.distance_mi)
+        for p in same + rest[:per_taxonomy]:
+            key = (_dedup_key(p.name), p.zip5)
             if key in out:
                 continue
             proximity_factor = max(0.0, 1 - (p.distance_mi / 15.0))  # 15-mi reference radius
@@ -160,12 +183,12 @@ def _find_referral_candidates_free(lat: float, lon: float, radius_m: int = 8000)
 
 
 def find_referral_candidates(api_key: str, lat: float, lon: float, radius_m: int = 8000,
-                             zip5: str = "", state: str = "") -> list[ReferralCandidate]:
+                             zip5: str = "", state: str = "", target_addr: str = "") -> list[ReferralCandidate]:
     # Primary, credential-accurate path: NPPES NPI Registry by taxonomy. This
     # is the correct source for medical referrers (sleep medicine, ENT,
     # neurology, PCP) — strictly better than a generic map search, and free.
     if zip5:
-        nppes_results = _find_referral_candidates_nppes(lat, lon, zip5, state)
+        nppes_results = _find_referral_candidates_nppes(lat, lon, zip5, state, target_addr=target_addr)
         if nppes_results:
             return nppes_results
     # Fallbacks if no NPPES results (e.g. no ZIP resolved): Google or free OSM.

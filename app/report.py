@@ -74,7 +74,8 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
     step("Finding referral sources (MDs of all specialties via NPI Registry) + non-competitor dentists...")
     try:
         md_referrals = referrals.find_referral_candidates(
-            google_api_key, geo.lat, geo.lon, zip5=geo.zip_code, state=state_abbr
+            google_api_key, geo.lat, geo.lon, zip5=geo.zip_code, state=state_abbr,
+            target_addr=geo.matched_address,
         )
         # Convert referral-dentists (DDS who don't advertise TMJ/sleep) into referral rows.
         dds_rows = []
