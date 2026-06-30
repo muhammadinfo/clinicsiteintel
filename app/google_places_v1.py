@@ -79,6 +79,13 @@ def text_search(api_key, query, lat, lon, radius_m=12000, max_results=20):
     return _post(TEXT_URL, api_key, body)
 
 
+def geocode_text(api_key, query, max_results=1):
+    """Geocode a full address via text search (no location bias) — used to resolve
+    an address to accurate coordinates + Google's canonical formatted address."""
+    body = {"textQuery": query, "maxResultCount": int(max_results)}
+    return _post(TEXT_URL, api_key, body)
+
+
 def nearby(api_key, lat, lon, radius_m, included_types, max_results=20):
     """Type-filtered nearby search (used for the building-directory pull)."""
     body = {

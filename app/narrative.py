@@ -75,7 +75,7 @@ def build_consultant_read(rep: dict, pal: dict = None) -> str:
     econ = rep.get("econ") or {}
     proj, be = econ.get("projected_cases"), econ.get("break_even_cases")
 
-    band_txt, band_col = _band(mean)
+    band_txt, band_col = _band(point)   # band from the headline value, not the MC mean
 
     # ---- 1) Contribution table: each factor's points into the index ----------
     rows = []
@@ -389,8 +389,10 @@ def build_summary_html(rep: dict) -> str:
     mean = summ.get("mean")
     point = summ.get("point_estimate") or mean or 0
     p05, p95 = summ.get("p05"), summ.get("p95")
-    band, _ = verdict_band(mean)
-    zc = _zone_color(mean)
+    # Verdict label + color derive from the SAME value shown as the headline
+    # number (the point estimate), so the score and the PURSUE/colour never disagree.
+    band, _ = verdict_band(point)
+    zc = _zone_color(point)
 
     geo = rep.get("geo") or {}
     addr = (geo.get("matched_address") or rep.get("address_input") or "").upper()

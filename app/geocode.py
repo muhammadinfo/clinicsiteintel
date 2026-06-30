@@ -21,41 +21,98 @@ class GeoResult:
     county_fips: str
     tract: str
     block: str
+    match_warning: str = ""   # set when the resolved address differs from input
 
     @property
     def geoid_tract(self) -> str:
         return f"{self.state_fips}{self.county_fips}{self.tract}"
 
 
+def _house_num(a: str) -> str:
+    m = re.match(r"\s*(\d+)", (a or "").strip())
+    return m.group(1) if m else ""
+
+
+def _census_geography_at(lat: float, lon: float) -> dict:
+    """Reverse-lookup the Census tract/block for accurate (e.g. Google) coords —
+    needed to pull matching ACS demographics regardless of which geocoder we used."""
+    try:
+        r = requests.get(
+            "https://geocoding.geo.census.gov/geocoder/geographies/coordinates",
+            params={"x": lon, "y": lat, "benchmark": "4", "vintage": "4", "format": "json"},
+            timeout=20)
+        g = r.json().get("result", {}).get("geographies", {})
+        tk = next((k for k in g if "Census Tracts" in k), None)
+        return g.get(tk, [{}])[0] if tk else {}
+    except Exception:
+        return {}
+
+
+def _google_geocode(address: str):
+    """Accurate geocode via Places API (New), if a key is configured. Returns a
+    normalized place dict or None (no key / not found / error)."""
+    try:
+        import config
+        key = (config.load_config() or {}).get("google_places_api_key", "")
+    except Exception:
+        key = ""
+    if not key:
+        return None
+    try:
+        import google_places_v1 as gp
+        res = gp.geocode_text(key, address, max_results=1)
+    except Exception:
+        return None
+    if res and res[0].get("lat") and res[0].get("lon"):
+        return res[0]
+    return None
+
+
 def geocode_address(address: str) -> GeoResult:
-    params = {
-        "address": address,
-        "benchmark": "4",       # Public_AR_Current
-        "vintage": "4",         # Current_Current
-        "format": "json",
-    }
-    r = requests.get(CENSUS_GEOCODE_URL, params=params, timeout=20)
+    in_num = _house_num(address)
+
+    # 1) Google (Places API New) — most accurate. Only trust it when the resolved
+    #    house number matches what was entered (else fall through to Census).
+    g = _google_geocode(address)
+    if g and (not in_num or _house_num(g.get("address", "")) == in_num):
+        lat, lon = float(g["lat"]), float(g["lon"])
+        ti = _census_geography_at(lat, lon)
+        matched = g.get("address", address)
+        zm = re.search(r"\b(\d{5})(?:-\d{4})?\b", matched)
+        return GeoResult(
+            matched_address=matched, lat=lat, lon=lon,
+            zip_code=zm.group(1) if zm else "",
+            state_fips=ti.get("STATE", ""), county_fips=ti.get("COUNTY", ""),
+            tract=ti.get("TRACT", ""), block=ti.get("BLOCK", ""))
+
+    # 2) US Census geocoder (free fallback / no key), now with match VALIDATION.
+    r = requests.get(CENSUS_GEOCODE_URL,
+                     params={"address": address, "benchmark": "4", "vintage": "4", "format": "json"},
+                     timeout=20)
     r.raise_for_status()
-    data = r.json()
-    matches = data.get("result", {}).get("addressMatches", [])
+    matches = r.json().get("result", {}).get("addressMatches", [])
     if not matches:
         raise ValueError(
             f"Could not geocode address: {address!r}. "
             "Check spelling, or add city/state/ZIP for a better match."
         )
-    m = matches[0]
+    # Prefer a candidate whose house number matches the input over a blind matches[0].
+    m = next((mm for mm in matches if in_num and _house_num(mm.get("matchedAddress", "")) == in_num),
+             matches[0])
     coords = m["coordinates"]
     geographies = m.get("geographies", {})
-
     tract_key = next((k for k in geographies if "Census Tracts" in k), None)
     tract_info = geographies.get(tract_key, [{}])[0] if tract_key else {}
-
     matched_address = m.get("matchedAddress", address)
-    # The ZCTA geography layer isn't reliably present on every benchmark/vintage
-    # combination, but the matched address string always includes the ZIP —
-    # pull it directly from there instead of depending on that layer.
     zip_match = re.search(r"\b(\d{5})(?:-\d{4})?\s*$", matched_address.strip())
     zip_code = zip_match.group(1) if zip_match else ""
+
+    warning = ""
+    out_num = _house_num(matched_address)
+    if in_num and out_num and in_num != out_num:
+        warning = (f"Address mismatch: you entered number {in_num}, but the closest match found was "
+                   f"“{matched_address}”. The report may describe a NEARBY location — verify the "
+                   "address (add the ZIP, or a Google Places key gives exact matching).")
 
     return GeoResult(
         matched_address=matched_address,
@@ -66,6 +123,7 @@ def geocode_address(address: str) -> GeoResult:
         county_fips=tract_info.get("COUNTY", ""),
         tract=tract_info.get("TRACT", ""),
         block=tract_info.get("BLOCK", ""),
+        match_warning=warning,
     )
 
 

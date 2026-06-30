@@ -23,9 +23,11 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
 
     report = {"address_input": address, "errors": []}
 
-    step("Geocoding address (US Census Bureau)...")
+    step("Geocoding address...")
     geo = geocode.geocode_address(address)
     report["geo"] = geo.__dict__
+    if getattr(geo, "match_warning", ""):
+        report["errors"].append("⚠ " + geo.match_warning)
 
     # Extract the 2-letter USPS state from the matched address (e.g.
     # "2220 LYNN RD, THOUSAND OAKS, CA, 91360") for NPPES queries.
