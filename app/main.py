@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
         v.addWidget(scroll, 1)
 
     def _verdict_color(self, verdict):
-        return {"Strong Buy": "#34c759", "Viable": "#007aff",
+        return {"Strong Buy": "#34c759", "Viable": "#ff9f0a",
                 "Caution": "#ff9500", "Not Recommended": "#ff3b30"}.get(verdict, "#8e8e93")
 
     def _add_verdict_card(self, pl: dict, v: dict):

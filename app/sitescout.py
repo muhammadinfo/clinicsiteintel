@@ -266,7 +266,8 @@ def build_context(listing: PropertyListing, zip5, state, known_competitors, cens
     except Exception as e:
         ctx["competitors"] = []; log(f"competitor scan failed: {e}")
     try:
-        ctx["referrals"] = ref_mod.find_referral_candidates("", lat, lng, zip5=zip5, state=state)
+        ctx["referrals"] = ref_mod.find_referral_candidates("", lat, lng, zip5=zip5, state=state,
+                                                            target_addr=listing.address)
     except Exception as e:
         ctx["referrals"] = []; log(f"referral scan failed: {e}")
     return ctx
@@ -337,16 +338,24 @@ def calculate_location_verdict(listing: PropertyListing, ctx: dict, mapbox_token
                         key=lambda x: x[2] if x[2] is not None else 999)[:10]
     n_spec = len(spec)
 
-    score = 0
-    score += min(35, capture * 2.0)
-    score += 25 * affluence
-    score += min(20, n_md * 1.0)
-    if n_spec == 0: score += 20
-    elif (nearest_spec_mi or 99) >= 8: score += 12
-    elif (nearest_spec_mi or 99) >= 4: score += 6
-    if _econ_clears(sp.huff_captured_pop): score += 8
-    score = int(max(0, min(100, score)))
-    verdict = ("Strong Buy" if score >= 72 else "Viable" if score >= 55
+    # Score on the SAME Location Viability Index the full Summary report uses, so
+    # Site Scout and the Summary never disagree for the same address. (Previously
+    # Site Scout had its own capture-dominated formula, which produced e.g.
+    # "Caution 46" while the Summary said "PURSUE 72" for the same site.)
+    import lvi
+    ref_dicts = [r.__dict__ if hasattr(r, "__dict__") else r for r in refs]
+    income_v = zcta.median_household_income if zcta else None
+    age_v = getattr(zcta, "median_age", None) if zcta else None
+    pop_v = getattr(zcta, "population", None) if zcta else None
+    ds = lvi.derive_ds_from_demographics(income_v, age_v, pop_v)
+    rp = lvi.derive_rp_from_referrals(ref_dicts)
+    if_ = lvi.derive_if_from_medical_hub(ref_dicts, comps)
+    comp_pairs = [(c.get("competition_score", 0), c.get("distance_mi"))
+                  for c in comps if c.get("competition_score", 0) > 0]
+    cp = lvi.derive_cp_from_competitors_v2(comp_pairs)
+    score = int(round(lvi.calc_lvi(ds, rp, if_, cp, 50.0, 50.0)))
+    # Verdict bands aligned to the Summary's LVI bands (PURSUE >=65, conditions >=50).
+    verdict = ("Strong Buy" if score >= 65 else "Viable" if score >= 50
                else "Caution" if score >= 38 else "Not Recommended")
 
     near_txt = (f"the nearest competitor ~{nearest_spec_mi:.0f} mi away"
