@@ -17,11 +17,12 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QTabWidget, QTextEdit, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QListWidget, QListWidgetItem,
     QSplitter, QPlainTextEdit, QFormLayout, QGroupBox, QProgressBar,
-    QScrollArea, QFrame, QSpinBox, QFileDialog,
+    QScrollArea, QFrame, QSpinBox, QFileDialog, QComboBox,
 )
 
 import config
 import db
+import compare
 import report as report_mod
 import realestate
 import nppes
@@ -119,6 +120,22 @@ class ReportWorker(QThread):
             self.finished_ok.emit(result)
         except Exception as e:
             self.finished_err.emit(f"{e}\n\n{traceback.format_exc()}")
+
+
+class _CompareAIWorker(QThread):
+    """Runs the (slow, blocking) Anthropic comparative assessment off the UI thread."""
+    done = Signal(str)
+
+    def __init__(self, key, repA, repB):
+        super().__init__()
+        self.key, self.repA, self.repB = key, repA, repB
+
+    def run(self):
+        try:
+            html = compare.build_ai_insight(self.key, self.repA, self.repB)
+        except Exception as e:
+            html = f"<p style='color:#ff3b30;'>AI assessment failed: {e.__class__.__name__}</p>"
+        self.done.emit(html)
 
 
 class ListingsWorker(QThread):
@@ -286,6 +303,10 @@ class MainWindow(QMainWindow):
         self.sitescout_tab = QWidget()
         self._build_sitescout_tab()
         self.tabs.addTab(self.sitescout_tab, "Site Scout")
+
+        self.compare_tab = QWidget()
+        self._build_compare_tab()
+        self.tabs.addTab(self.compare_tab, "Compare")
 
         self.stats_tab = QTextEdit(readOnly=True)
         self.tabs.addTab(self.stats_tab, "Statistics")
@@ -700,6 +721,88 @@ class MainWindow(QMainWindow):
         report_id = self.current_report.get("_db_id") if self.current_report else None
         db.save_pasted_listing(report_id, text, result.__dict__)
 
+    # ---------------- Compare tab ----------------
+    def _build_compare_tab(self):
+        v = QVBoxLayout(self.compare_tab)
+        ctrl = QHBoxLayout()
+        self.cmp_a = QComboBox(); self.cmp_b = QComboBox()
+        self.cmp_a.setMinimumWidth(230); self.cmp_b.setMinimumWidth(230)
+        self.cmp_run_btn = QPushButton("⚖  Compare")
+        self.cmp_run_btn.clicked.connect(self.on_compare)
+        self.cmp_ai_btn = QPushButton("🧠  Generate AI assessment")
+        self.cmp_ai_btn.clicked.connect(self.on_compare_ai)
+        self.cmp_ai_btn.setEnabled(False)
+        ctrl.addWidget(QLabel("Site A")); ctrl.addWidget(self.cmp_a, 1)
+        ctrl.addWidget(QLabel("vs")); ctrl.addWidget(QLabel("Site B")); ctrl.addWidget(self.cmp_b, 1)
+        ctrl.addWidget(self.cmp_run_btn); ctrl.addWidget(self.cmp_ai_btn)
+        v.addLayout(ctrl)
+        self.cmp_status = QLabel("Pick two analyzed addresses and click Compare. Run reports in the "
+                                 "Summary tab first — they appear here automatically.")
+        self.cmp_status.setWordWrap(True)
+        self.cmp_status.setStyleSheet("color:#6e6e73; font-size:12px;")
+        v.addWidget(self.cmp_status)
+        self.compare_view = QWebEngineView()
+        v.addWidget(self.compare_view, 1)
+        self._cmp_repA = self._cmp_repB = None
+        self._refresh_compare_choices()
+
+    def _refresh_compare_choices(self):
+        if not hasattr(self, "cmp_a"):
+            return
+        try:
+            reports = db.list_reports()
+        except Exception:
+            reports = []
+        for combo in (self.cmp_a, self.cmp_b):
+            cur = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            for r in reports:
+                lvi = r.get("lvi_mean")
+                lab = r["address"] + (f"   ·  LVI {lvi:.0f}" if isinstance(lvi, (int, float)) else "")
+                combo.addItem(lab, r["id"])
+            idx = combo.findData(cur)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+        if self.cmp_b.count() > 1 and self.cmp_b.currentIndex() == self.cmp_a.currentIndex():
+            self.cmp_b.setCurrentIndex(1)
+
+    def on_compare(self):
+        ida, idb = self.cmp_a.currentData(), self.cmp_b.currentData()
+        if ida is None or idb is None:
+            self.cmp_status.setText("Need two analyzed addresses — run reports in the Summary tab first.")
+            return
+        if ida == idb:
+            self.cmp_status.setText("Pick two different addresses.")
+            return
+        self._cmp_repA, self._cmp_repB = db.get_report(ida), db.get_report(idb)
+        if not self._cmp_repA or not self._cmp_repB:
+            self.cmp_status.setText("Could not load one of the saved reports.")
+            return
+        self.compare_view.setHtml(compare.build_comparison_html(
+            self._cmp_repA, self._cmp_repB, mapbox_key=self.cfg.get("mapbox_key", "")))
+        self.cmp_ai_btn.setEnabled(True)
+        self.cmp_status.setText("Comparison ready. Click 'Generate AI assessment' for a written analysis.")
+
+    def on_compare_ai(self):
+        if not (self._cmp_repA and self._cmp_repB):
+            return
+        self.cmp_ai_btn.setEnabled(False)
+        self.cmp_ai_btn.setText("Generating…")
+        self.cmp_status.setText("Asking Claude for a comparative assessment…")
+        self._cmp_ai_worker = _CompareAIWorker(
+            self.cfg.get("anthropic_key", ""), self._cmp_repA, self._cmp_repB)
+        self._cmp_ai_worker.done.connect(self._on_compare_ai_done)
+        self._cmp_ai_worker.start()
+
+    def _on_compare_ai_done(self, ai_html):
+        self.cmp_ai_btn.setEnabled(True)
+        self.cmp_ai_btn.setText("🧠  Generate AI assessment")
+        self.compare_view.setHtml(compare.build_comparison_html(
+            self._cmp_repA, self._cmp_repB, ai_html=ai_html, mapbox_key=self.cfg.get("mapbox_key", "")))
+        self.cmp_status.setText("AI assessment added below the map.")
+
     # ---------------- Saved reports tab ----------------
     def _build_saved_tab(self):
         v = QVBoxLayout(self.saved_tab)
@@ -941,6 +1044,7 @@ class MainWindow(QMainWindow):
         self._render_referrals(rep)
         self._render_realestate(rep)
         self._render_stats(rep)
+        self._refresh_compare_choices()   # new report now selectable in Compare
 
     @staticmethod
     def _card(title, body_html):
