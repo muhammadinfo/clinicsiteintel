@@ -16,7 +16,15 @@ def clip(x: float) -> float:
 
 
 def calc_lvi(ds: float, rp: float, if_: float, cp: float, of_: float, rc: float) -> float:
-    score = 0.35 * ds + 0.25 * rp + 0.20 * if_ + 0.10 * cp + 0.10 * of_ - 0.20 * rc
+    # Weights reflect the practice's stated objective, in priority order:
+    #   1. Referral build-up   -> Rp (referral access) 0.30 + If (co-located
+    #      medical hub) 0.18 = 0.48 of the index.
+    #   2. Low competition     -> Cp 0.25 (was 0.10).
+    #   3. Patient demand /     -> Ds 0.22 (income / population / age fit).
+    #      population
+    # Rent (Rc) and operational fit (Of) are deliberately MINOR (0.08 / 0.05) —
+    # the user judges them low-importance vs. referrals, competition and crowds.
+    score = 0.22 * ds + 0.30 * rp + 0.18 * if_ + 0.25 * cp + 0.05 * of_ - 0.08 * rc
     return clip(score)
 
 
@@ -95,16 +103,28 @@ def derive_rp_from_referrals(referrals: list) -> float:
     scores far above 'lots of doctors somewhere in the ZIP'."""
     if not referrals:
         return 50.0
-    access = 0.0
+    # Blend TWO signals, both kept heavy (per the user's directive):
+    #   proximity  — in-building / geocoded-near referrers, steep decay so a
+    #                referrer on your floor far outweighs one across the ZIP;
+    #   density    — ZIP-wide physician count (referrers whose exact distance is
+    #                unknown — the 0.6-mi ZIP-centroid fallback — count here, NOT
+    #                as if they were 0.6 mi away, which previously inflated Rp).
+    prox_access = 0.0
+    zip_weight = 0.0
     for r in referrals:
         w = (r.get("fit_weight") or 4) / 10.0
         d = r.get("distance_mi")
-        d = 5.0 if d is None else d
-        contrib = w * math.exp(-d / 3.0)                      # 3-mi e-folding decay
-        if d <= 0.2 and (r.get("fit_weight") or 0) >= _HIGH_VALUE_REFERRAL:
+        is_fallback = d is not None and abs(d - 0.6) < 0.001   # ZIP-centroid placeholder
+        if d is None or is_fallback:
+            zip_weight += w                                   # density only
+            continue
+        contrib = w * math.exp(-d / 1.5)                      # steeper 1.5-mi e-folding
+        if d <= 0.05 and (r.get("fit_weight") or 0) >= _HIGH_VALUE_REFERRAL:
             contrib *= 2.5                                    # co-located anchor bonus
-        access += contrib
-    return clip(100 * (1 - math.exp(-access / 6.0)))          # diminishing returns
+        prox_access += contrib
+    prox_score = 100 * (1 - math.exp(-prox_access / 4.0))     # real-proximity component
+    density_score = 100 * (1 - math.exp(-zip_weight / 8.0))   # ZIP-density component (heavy)
+    return clip(0.6 * prox_score + 0.4 * density_score)
 
 
 def derive_if_from_medical_hub(referrals: list, competitors: list = None) -> float:
@@ -128,20 +148,21 @@ def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42,
 
     Adapt the standard deviations (sigma) based on data certainty: strong signals
     (many on-site referrers, few competitors, dense medical hub) should have lower
-    uncertainty; weak signals should have higher uncertainty."""
-    if not inputs.sigma:
-        # Base sigmas are conservative defaults for mid-range inputs.
-        # Adapt down for high-confidence signals: many on-site referrers and few
-        # competitors = much lower uncertainty. Adapt up for weak signals.
-        ds_sigma = 8.0
-        rp_sigma = max(4.0, 12.0 - on_site_count / 3)  # more on-site → much tighter
-        if__sigma = max(3.0, 15.0 - on_site_count / 2)  # more on-site MDs → much tighter
-        cp_sigma = max(2.0, 10.0 - 8.0 / max(1, competitor_count))  # fewer competitors → much tighter
-        of_sigma = 12.0
-        rc_sigma = 20.0
-        sigma = {"ds": ds_sigma, "rp": rp_sigma, "if_": if__sigma, "cp": cp_sigma, "of_": of_sigma, "rc": rc_sigma}
-    else:
-        sigma = inputs.sigma
+    uncertainty; weak signals should have higher uncertainty.
+
+    If inputs.sigma is provided, it may be partial (e.g. only ds_sigma). Missing
+    fields are computed adaptively."""
+    # Start with adaptive defaults, then overlay any pre-set sigmas (e.g. ds from Census MOE).
+    rp_sigma = max(4.0, 12.0 - on_site_count / 3)  # more on-site → much tighter
+    if__sigma = max(3.0, 15.0 - on_site_count / 2)  # more on-site MDs → much tighter
+    cp_sigma = max(2.0, 10.0 - 8.0 / max(1, competitor_count))  # fewer competitors → much tighter
+    of_sigma = 12.0
+    rc_sigma = 20.0
+    ds_sigma = 8.0
+    sigma = {"ds": ds_sigma, "rp": rp_sigma, "if_": if__sigma, "cp": cp_sigma, "of_": of_sigma, "rc": rc_sigma}
+    # Overlay pre-set sigmas (e.g. ds from Census MOE data).
+    if inputs.sigma:
+        sigma.update(inputs.sigma)
     rnd = random.Random(seed)
     draws = []
     for _ in range(n):
