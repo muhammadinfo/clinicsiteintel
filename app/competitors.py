@@ -99,38 +99,62 @@ def search_nearby_competitors_free(lat: float, lon: float, radius_m: int = 12000
 
 
 def search_nearby_competitors(api_key: str, lat: float, lon: float, radius_m: int = 12000) -> list[CompetitorResult]:
+    """Keyword competitor discovery via Places API (New). The new API returns
+    website + phone inline (field mask), so no separate Details call is needed."""
     if not api_key:
         raise ValueError(
             "No Google Places API key configured. Add one in Settings → "
-            "Google Maps Platform API key (Places API must be enabled)."
+            "Google Places API key (Places API (New) must be enabled)."
         )
+    import google_places_v1 as gp
     seen: dict[str, CompetitorResult] = {}
     for term in SEARCH_TERMS:
-        params = {
-            "key": api_key,
-            "location": f"{lat},{lon}",
-            "radius": radius_m,
-            "keyword": term,
-        }
-        r = requests.get(PLACES_NEARBY_URL, params=params, timeout=20)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            continue
-        for place in data.get("results", []):
-            pid = place.get("place_id")
+        for pl in gp.text_search(api_key, term, lat, lon, radius_m):
+            pid = pl.get("place_id")
             if not pid or pid in seen:
                 continue
-            loc = place.get("geometry", {}).get("location", {})
             seen[pid] = CompetitorResult(
-                name=place.get("name", "Unknown"),
-                address=place.get("vicinity", ""),
-                lat=loc.get("lat", 0.0),
-                lon=loc.get("lng", 0.0),
+                name=pl.get("name") or "Unknown",
+                address=pl.get("address", ""),
+                lat=pl.get("lat", 0.0),
+                lon=pl.get("lon", 0.0),
                 place_id=pid,
-                rating=place.get("rating"),
-                user_ratings_total=place.get("user_ratings_total"),
+                rating=pl.get("rating"),
+                user_ratings_total=pl.get("user_ratings_total"),
+                website=pl.get("website"),
+                phone=pl.get("phone"),
             )
+    return list(seen.values())
+
+
+# Place types that indicate a medical/dental tenant for the building-directory pull.
+_DIRECTORY_TYPES = ["doctor", "dentist", "physiotherapist", "hospital",
+                    "medical_lab", "wellness_center"]
+
+
+def building_directory(api_key: str, lat: float, lon: float, radius_m: int = 80) -> list[CompetitorResult]:
+    """Google Maps 'Directory'-style pull: every medical/dental tenant AT (or
+    within ~radius of) this exact building, via a tight-radius Places (New)
+    nearby search. This captures in-building providers that NPI misses."""
+    if not api_key:
+        return []
+    import google_places_v1 as gp
+    seen: dict[str, CompetitorResult] = {}
+    for pl in gp.nearby(api_key, lat, lon, radius_m, _DIRECTORY_TYPES, max_results=20):
+        pid = pl.get("place_id")
+        if not pid or pid in seen:
+            continue
+        seen[pid] = CompetitorResult(
+            name=pl.get("name") or "Unknown",
+            address=pl.get("address", ""),
+            lat=pl.get("lat", 0.0),
+            lon=pl.get("lon", 0.0),
+            place_id=pid,
+            rating=pl.get("rating"),
+            user_ratings_total=pl.get("user_ratings_total"),
+            website=pl.get("website"),
+            phone=pl.get("phone"),
+        )
     return list(seen.values())
 
 
@@ -405,25 +429,29 @@ def run_full_competitor_scan(api_key: str, lat: float, lon: float, radius_m: int
     #    wipe out the credentialed NPPES specialists or the website-verified
     #    watchlist gathered above.
     dentists = []
+    google_error = ""
+    used_google = False
     try:
         if api_key:
-            # Google Places: complete + reliable dentist coverage WITH websites.
-            dentists = search_nearby_competitors(api_key, lat, lon, radius_m)
-            for d in dentists:
-                details = fetch_place_details(api_key, d.place_id)
-                d.website = details.get("website")
-                d.phone = details.get("formatted_phone_number")
-                if details.get("formatted_address"):
-                    d.address = details["formatted_address"]
+            # Places API (New): complete dentist coverage WITH website/phone inline,
+            # PLUS a tight-radius building-directory pull for in-building tenants.
+            merged: dict[str, CompetitorResult] = {}
+            for d in search_nearby_competitors(api_key, lat, lon, radius_m):
+                merged[d.place_id] = d
+            try:
+                for d in building_directory(api_key, lat, lon):
+                    merged.setdefault(d.place_id, d)
+            except Exception:
+                pass
+            dentists = list(merged.values())
+            used_google = True
         else:
-            # Free path: OSM-mapped dentists that carry websites. NOTE: OSM maps
-            # only a fraction of the dentist universe, and resolving the complete
-            # NPPES list's websites via search engines is unreliable (they CAPTCHA
-            # after a few queries). So free-mode general-dentist coverage is
-            # partial — a Google Places key gives complete coverage. The credentialed
-            # SPECIALIST competitors (the ones that matter) are complete either way.
+            # Free path: OSM-mapped dentists that carry websites — partial coverage.
             dentists = search_nearby_competitors_free(lat, lon, radius_m)
-    except Exception:
+    except Exception as e:
+        # Surface the REAL reason (e.g. Places API (New) not enabled / billing /
+        # invalid key) instead of silently dropping to free mode.
+        google_error = str(e)
         dentists = []  # specialists + watchlist still returned below
 
     competitor_dentists, referral_dentists = [], []
@@ -445,4 +473,5 @@ def run_full_competitor_scan(api_key: str, lat: float, lon: float, radius_m: int
     competitors.sort(key=lambda c: (not c.tier.startswith("Specialist"), -c.competition_score,
                                     c.distance_mi if c.distance_mi is not None else 999))
     referral_dentists.sort(key=lambda c: c.distance_mi if c.distance_mi is not None else 999)
-    return {"competitors": competitors, "referral_dentists": referral_dentists}
+    return {"competitors": competitors, "referral_dentists": referral_dentists,
+            "google_error": google_error, "used_google": used_google}

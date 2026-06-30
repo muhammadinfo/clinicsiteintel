@@ -1346,15 +1346,21 @@ class MainWindow(QMainWindow):
             )
             self.competitors_status.show()
         else:
-            self.competitors_status.setText(
-                f"COMPETITORS = dentists who DO orofacial pain / TMJ / dental sleep. "
-                f"{n_spec} credentialed orofacial-pain specialist(s) (red) — COMPLETE, from the NPI "
-                "Registry by taxonomy — these are your real competitors. Plus general dentists whose "
-                "website advertises TMJ/sleep. Note: general-dentist coverage is PARTIAL in free mode "
-                "(only map-listed practices are website-scanned); the wider dentist pool appears under "
-                "Referral Map as referral sources. Add a Google Places key (Settings) for complete "
-                "general-dentist verification."
-            )
+            ps = rep.get("places_status") or {}
+            base = (f"COMPETITORS = dentists who DO orofacial pain / TMJ / dental sleep. "
+                    f"{n_spec} credentialed orofacial-pain specialist(s) (red) — COMPLETE, from the NPI "
+                    "Registry by taxonomy. Plus general dentists whose website advertises TMJ/sleep. ")
+            if ps.get("google_error"):
+                tail = ("⚠ Google Places (New) FAILED: " + ps["google_error"]
+                        + " — enable 'Places API (New)' + active billing on your project (or the key is "
+                        "invalid). Until then, general-dentist coverage is OpenStreetMap-only (partial).")
+            elif ps.get("used_google"):
+                tail = ("✓ Google Places (New) live — full general-dentist coverage + the building "
+                        "directory (in-building tenants) for this address.")
+            else:
+                tail = ("Note: general-dentist coverage is PARTIAL in free mode (OpenStreetMap only). "
+                        "Add a Google Places key (Settings) for complete coverage + the building directory.")
+            self.competitors_status.setText(base + tail)
             self.competitors_status.show()
 
     def _render_referrals(self, rep):

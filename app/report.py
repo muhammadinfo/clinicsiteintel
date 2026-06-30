@@ -61,6 +61,11 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
         comp_results = scan["competitors"]
         referral_dentists = scan["referral_dentists"]
         report["competitors"] = [c.__dict__ for c in comp_results]
+        report["places_status"] = {"used_google": scan.get("used_google", False),
+                                    "google_error": scan.get("google_error", "")}
+        if scan.get("google_error"):
+            report["errors"].append("Google Places (New) error — " + scan["google_error"]
+                                    + "  (Enable 'Places API (New)' + billing on the project, or the key is invalid.)")
         n_spec = sum(1 for c in comp_results if c.tier == "Specialist")
         if n_spec == 0:
             report["errors"].append(
@@ -129,8 +134,10 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
     if inc and inc_moe:
         rel = (inc_moe / 1.645) / inc   # MOE is 90% half-width -> 1 SD
         ds_sigma = max(5.0, min(22.0, 6.0 + rel * 120.0))
-    sigma = {"ds": ds_sigma, "rp": 12, "if_": 15, "cp": 10, "of_": 12, "rc": 20}
-    inputs = lvi.LVIInputs(ds=ds, rp=rp, if_=if_factor, cp=cp, of_=50.0, rc=50.0, sigma=sigma)
+    # Let monte_carlo_lvi compute adaptive sigmas based on data certainty, but
+    # seed it with the Census income MOE-derived ds_sigma (that one is data-driven).
+    inputs = lvi.LVIInputs(ds=ds, rp=rp, if_=if_factor, cp=cp, of_=50.0, rc=50.0,
+                           sigma={"ds": ds_sigma})  # only ds is data-driven; rest adaptive
     # Count on-site referrers & competitors for adaptive uncertainty reduction.
     on_site = sum(1 for r in referrals_list
                   if (r.get("distance_mi") if r.get("distance_mi") is not None else 9) <= 0.2)
