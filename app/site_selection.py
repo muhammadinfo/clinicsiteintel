@@ -117,9 +117,9 @@ def score_site(rep: dict) -> dict:
     hosp_proxy = min(1.0, (if_ / 100) * 0.4 + min(1.0, (in_building + near) / 15.0) * 0.6)
     hospital_pts = round(hosp_proxy * 10, 1)
     competition_pts = round(cp / 100 * 25, 1)
-    demo_pts = round(ds / 100 * 5, 1)
-    access_pts = 2.5     # neutral until parking/freeway data is collected
-    growth_pts = 2.5     # neutral until growth data is collected
+    demo_pts = round(ds / 100 * 10, 1)   # 10 (was 5) — population/demand weighted up
+    access_pts = 1.5     # max 3, neutral until parking/freeway data is collected
+    growth_pts = 1.0     # max 2, neutral until growth data is collected
 
     bonus = 0.0
     if n_onsite >= 30:
@@ -156,11 +156,11 @@ def score_site(rep: dict) -> dict:
             {"name": "Competition Penalty", "score": competition_pts, "max": 25,
              "basis": f"{len(specs)} credentialed specialists"
                       + (f", nearest {nearest:.2f} mi" if nearest is not None else ""), "confidence": "High"},
-            {"name": "Demographics", "score": demo_pts, "max": 5,
-             "basis": "Income / age fit to cash-pay cohort", "confidence": "Medium — education/insurance mix not yet pulled"},
-            {"name": "Accessibility", "score": access_pts, "max": 5,
+            {"name": "Demographics", "score": demo_pts, "max": 10,
+             "basis": "Income / age / population fit to cash-pay cohort", "confidence": "Medium — education/insurance mix not yet pulled"},
+            {"name": "Accessibility", "score": access_pts, "max": 3,
              "basis": "Neutral default", "confidence": "Low — parking/freeway/ADA not yet measured"},
-            {"name": "Growth Potential", "score": growth_pts, "max": 5,
+            {"name": "Growth Potential", "score": growth_pts, "max": 2,
              "basis": "Neutral default", "confidence": "Low — development pipeline not yet measured"},
         ],
         "deliverables": {

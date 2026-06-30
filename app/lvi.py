@@ -109,22 +109,27 @@ def derive_rp_from_referrals(referrals: list) -> float:
     #   density    — ZIP-wide physician count (referrers whose exact distance is
     #                unknown — the 0.6-mi ZIP-centroid fallback — count here, NOT
     #                as if they were 0.6 mi away, which previously inflated Rp).
-    prox_access = 0.0
-    zip_weight = 0.0
+    near_access = 0.0   # ONLY in-building / within 1/4 mi counts as true proximity
+    zip_weight = 0.0    # everything else: far-but-real (decayed) + ZIP-centroid fallback
     for r in referrals:
         w = (r.get("fit_weight") or 4) / 10.0
         d = r.get("distance_mi")
         is_fallback = d is not None and abs(d - 0.6) < 0.001   # ZIP-centroid placeholder
         if d is None or is_fallback:
-            zip_weight += w                                   # density only
-            continue
-        contrib = w * math.exp(-d / 1.5)                      # steeper 1.5-mi e-folding
-        if d <= 0.05 and (r.get("fit_weight") or 0) >= _HIGH_VALUE_REFERRAL:
-            contrib *= 2.5                                    # co-located anchor bonus
-        prox_access += contrib
-    prox_score = 100 * (1 - math.exp(-prox_access / 4.0))     # real-proximity component
-    density_score = 100 * (1 - math.exp(-zip_weight / 8.0))   # ZIP-density component (heavy)
-    return clip(0.6 * prox_score + 0.4 * density_score)
+            zip_weight += w                                   # unknown distance -> density
+        elif d <= 0.25:
+            contrib = w * math.exp(-d / 0.5)                  # steep — only the same block
+            if d <= 0.05 and (r.get("fit_weight") or 0) >= _HIGH_VALUE_REFERRAL:
+                contrib *= 2.5                                # co-located anchor bonus
+            near_access += contrib
+        else:
+            zip_weight += w * math.exp(-d / 3.0)              # far but real -> decayed density
+    prox_score = 100 * (1 - math.exp(-near_access / 3.0))     # in-building/near component
+    density_score = 100 * (1 - math.exp(-zip_weight / 8.0))   # ZIP-density component (still counts)
+    # Weighted toward in-building / near referrers (0.72) so a standalone building
+    # in a dense ZIP can no longer ride ZIP density to a top referral score, while
+    # ZIP density (0.28) still meaningfully contributes.
+    return clip(0.72 * prox_score + 0.28 * density_score)
 
 
 def derive_if_from_medical_hub(referrals: list, competitors: list = None) -> float:
