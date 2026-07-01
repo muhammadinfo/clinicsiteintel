@@ -271,6 +271,18 @@ class MainWindow(QMainWindow):
         search_row.addWidget(self.export_pdf_btn, 1)
         layout.addLayout(search_row)
 
+        # Warns when the address box no longer matches the loaded report, so the
+        # Summary/Export PDF can never be mistaken for a report on a different
+        # address (the exact confusion that caused a wrong-address score mismatch).
+        self.stale_banner = QLabel("")
+        self.stale_banner.setWordWrap(True)
+        self.stale_banner.setStyleSheet(
+            "background:#fff3cd; color:#8a6300; border:1px solid #ffe58f; "
+            "border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600;")
+        self.stale_banner.hide()
+        layout.addWidget(self.stale_banner)
+        self.address_input.textChanged.connect(self._check_stale)
+
         self.progress_label = QLabel("")
         self.progress_label.setObjectName("progress")
         self.progress_bar = QProgressBar()
@@ -868,6 +880,9 @@ class MainWindow(QMainWindow):
         rep = db.get_report(rid)
         if rep:
             rep["_db_id"] = rid
+            self.address_input.blockSignals(True)
+            self.address_input.setText(rep.get("address_input", ""))
+            self.address_input.blockSignals(False)
             self.render_report(rep)
             self.tabs.setCurrentIndex(0)
 
@@ -1002,10 +1017,37 @@ class MainWindow(QMainWindow):
         self.render_report(rep)
         self.refresh_saved_list()
 
+    def _check_stale(self, *_):
+        """Show a warning banner when the address box no longer matches the
+        currently-loaded report — prevents Summary/Export PDF from silently
+        showing a stale report for a different address than what's typed."""
+        if not self.current_report:
+            self.stale_banner.hide()
+            return
+        typed = self.address_input.text().strip()
+        loaded = (self.current_report.get("address_input") or "").strip()
+        if typed and loaded and typed.lower() != loaded.lower():
+            self.stale_banner.setText(
+                f"⚠ The Summary below is still for “{loaded}” — click Run Report to load "
+                f"“{typed}”. Export PDF will save the OLD address until you do."
+            )
+            self.stale_banner.show()
+        else:
+            self.stale_banner.hide()
+
     def on_export_pdf(self):
         if not self.current_report:
             QMessageBox.information(self, "Nothing to export", "Run a report first.")
             return
+        self._check_stale()
+        if self.stale_banner.isVisible():
+            if QMessageBox.question(
+                self, "Address changed",
+                "The address box doesn't match the loaded report. Export the OLD report anyway?\n\n"
+                "Click No, then Run Report to refresh first.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            ) == QMessageBox.No:
+                return
         addr = (self.current_report.get("address_input") or "report").strip()
         safe = "".join(c if c.isalnum() or c in " -_" else "" for c in addr).strip().replace(" ", "_")[:60] or "report"
         default_name = f"ClinicSiteIntel_{safe}.pdf"
@@ -1038,6 +1080,7 @@ class MainWindow(QMainWindow):
     def render_report(self, rep: dict):
         self.current_report = rep
         self.export_pdf_btn.setEnabled(True)
+        self._check_stale()
         self._render_summary(rep)
         self._render_demographics(rep)
         self._render_competitors(rep)
