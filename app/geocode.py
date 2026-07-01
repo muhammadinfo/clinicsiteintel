@@ -28,6 +28,19 @@ class GeoResult:
         return f"{self.state_fips}{self.county_fips}{self.tract}"
 
 
+def _extract_zip(formatted_address: str) -> str:
+    """Extract the ZIP from a formatted address like 'STREET, CITY, ST ZIP,
+    COUNTRY'. The street NUMBER (e.g. '22030 Sherman Way') is also a 5-digit
+    string and comes FIRST — an unanchored/first-match search grabs the house
+    number instead of the ZIP. Anchor on 'ST #####' (state code immediately
+    before the ZIP); fall back to the LAST 5-digit group in the string."""
+    m = re.search(r"\b[A-Z]{2}\s+(\d{5})(?:-\d{4})?\b", formatted_address or "")
+    if m:
+        return m.group(1)
+    all_5 = re.findall(r"\b(\d{5})(?:-\d{4})?\b", formatted_address or "")
+    return all_5[-1] if all_5 else ""
+
+
 def _house_num(a: str) -> str:
     m = re.match(r"\s*(\d+)", (a or "").strip())
     return m.group(1) if m else ""
@@ -78,10 +91,10 @@ def geocode_address(address: str) -> GeoResult:
         lat, lon = float(g["lat"]), float(g["lon"])
         ti = _census_geography_at(lat, lon)
         matched = g.get("address", address)
-        zm = re.search(r"\b(\d{5})(?:-\d{4})?\b", matched)
+        zip_code = _extract_zip(matched)
         return GeoResult(
             matched_address=matched, lat=lat, lon=lon,
-            zip_code=zm.group(1) if zm else "",
+            zip_code=zip_code,
             state_fips=ti.get("STATE", ""), county_fips=ti.get("COUNTY", ""),
             tract=ti.get("TRACT", ""), block=ti.get("BLOCK", ""))
 
@@ -104,8 +117,7 @@ def geocode_address(address: str) -> GeoResult:
     tract_key = next((k for k in geographies if "Census Tracts" in k), None)
     tract_info = geographies.get(tract_key, [{}])[0] if tract_key else {}
     matched_address = m.get("matchedAddress", address)
-    zip_match = re.search(r"\b(\d{5})(?:-\d{4})?\s*$", matched_address.strip())
-    zip_code = zip_match.group(1) if zip_match else ""
+    zip_code = _extract_zip(matched_address)
 
     warning = ""
     out_num = _house_num(matched_address)
