@@ -333,6 +333,79 @@ def _zone_color(v):
     return "#ff3b30"
 
 
+_DIR_TYPE_LABELS = [
+    ("dentist", "Dental office", "#ff9f0a"),
+    ("physiotherapist", "Physical therapy", "#0071e3"),
+    ("medical_lab", "Medical lab / imaging", "#5e5ce6"),
+    ("hospital", "Hospital / urgent care", "#ff3b30"),
+    ("wellness_center", "Wellness", "#34c759"),
+    ("doctor", "Physician / medical office", "#0071e3"),
+]
+
+
+def build_building_directory_html(rep: dict) -> str:
+    """Google Maps building-directory section: every medical tenant AT the
+    address, with an analysis line — so each address is 100% directory-checked."""
+    ps = rep.get("places_status") or {}
+    bdir = rep.get("building_directory")
+    if bdir is None and not ps:
+        return ""
+    if not bdir:
+        why = ("Google Places reported no medical/dental tenants registered at this address — "
+               "likely a standalone or non-medical building."
+               if ps.get("used_google") else
+               "Directory unavailable — add a Google Places key (Settings) to pull the "
+               "building's tenant directory on every report.")
+        return ("<div class='sec-title'>Building directory &mdash; Google Maps</div>"
+                f"<div class='factor'><div style='font-size:13.5px;color:var(--ink3);'>{why}</div></div>")
+
+    def _label(types):
+        for t, lbl, col in _DIR_TYPE_LABELS:
+            if t in (types or []):
+                return lbl, col
+        return "Medical tenant", "#86868b"
+
+    rows = ""
+    n_dent = n_md = 0
+    for d in bdir[:18]:
+        lbl, col = _label(d.get("types"))
+        if lbl == "Dental office":
+            n_dent += 1
+        elif lbl in ("Physician / medical office", "Physical therapy"):
+            n_md += 1
+        rating = (f"{d['rating']:.1f}★ · {d.get('user_ratings_total') or 0} reviews"
+                  if d.get("rating") else "no reviews")
+        dist = d.get("distance_mi")
+        dist_txt = "on-site" if (dist is not None and dist <= 0.03) else (f"{dist:.2f} mi" if dist is not None else "")
+        rows += ("<div style='display:flex;align-items:center;gap:10px;padding:7px 0;"
+                 "border-bottom:1px solid var(--line);'>"
+                 f"<span style='display:inline-block;min-width:150px;font-size:11px;font-weight:700;color:{col};'>{lbl.upper()}</span>"
+                 f"<span style='flex:1;font-size:13.5px;font-weight:600;'>{d.get('name','')}</span>"
+                 f"<span style='font-size:12px;color:var(--ink3);'>{rating}</span>"
+                 f"<span style='font-size:12px;color:var(--ink3);min-width:52px;text-align:right;'>{dist_txt}</span></div>")
+
+    if n_md and not n_dent:
+        verdict = (f"Directory analysis: {n_md} medical tenant(s) and no dental office at this address — "
+                   "referral-friendly building with no on-site dental rival.")
+    elif n_md and n_dent:
+        verdict = (f"Directory analysis: {n_md} medical tenant(s) alongside {n_dent} dental office(s) — "
+                   "verify the dental tenants' service mix before committing.")
+    elif n_dent:
+        verdict = (f"Directory analysis: {n_dent} dental office(s) and no physician tenants — "
+                   "a dental building, weaker for in-building MD referrals.")
+    else:
+        verdict = "Directory analysis: tenants found are not classic referral or competitor categories."
+
+    return ("<div class='sec-title'>Building directory &mdash; Google Maps</div>"
+            "<div class='factor'>"
+            "<div style='font-size:12.5px;color:var(--ink3);margin-bottom:8px;'>"
+            f"Live Google Maps directory pull at this address ({len(bdir)} medical/dental tenant(s) within ~400 ft).</div>"
+            f"{rows}"
+            "<div style='margin-top:12px;padding:12px 15px;background:var(--card);border-radius:12px;"
+            "border-left:3px solid #0071e3;font-size:13.5px;'>"
+            f"{verdict}</div></div>")
+
+
 def build_site_selection_html(rep: dict) -> str:
     ss = rep.get("site_selection") or {}
     if not ss:
@@ -575,6 +648,7 @@ def build_summary_html(rep: dict) -> str:
             f"</div><div style='margin-top:12px;'>{bars}</div></div>")
 
     site_html = build_site_selection_html(rep)
+    bdir_html = build_building_directory_html(rep)
 
     cred = rep.get("credential_summary") or {}
     cred_html = ""
@@ -629,6 +703,8 @@ def build_summary_html(rep: dict) -> str:
   </div>
 
   <div class="tldr">{tldr}</div>
+
+  {bdir_html}
 
   {site_html}
 

@@ -65,6 +65,16 @@ def run_full_report(address: str, google_api_key: str, census_api_key: str = "",
         report["competitors"] = [c.__dict__ for c in comp_results]
         report["places_status"] = {"used_google": scan.get("used_google", False),
                                     "google_error": scan.get("google_error", "")}
+        # Google Maps building directory — every medical tenant AT this address.
+        from geocode import haversine_miles as _hav
+        bdir = []
+        for d in scan.get("building_directory", []):
+            dd = d.__dict__ if hasattr(d, "__dict__") else dict(d)
+            if dd.get("lat") and dd.get("lon"):
+                dd["distance_mi"] = round(_hav(geo.lat, geo.lon, dd["lat"], dd["lon"]), 2)
+            bdir.append(dd)
+        bdir.sort(key=lambda x: (x.get("distance_mi") if x.get("distance_mi") is not None else 9))
+        report["building_directory"] = bdir
         if scan.get("google_error"):
             report["errors"].append("Google Places (New) error — " + scan["google_error"]
                                     + "  (Enable 'Places API (New)' + billing on the project, or the key is invalid.)")

@@ -229,7 +229,8 @@ def nppes_neighbor_zips(zip5):
     return [str(base + d) for d in (-3, -2, -1, 1, 2, 3)]
 
 
-def build_context(listing: PropertyListing, zip5, state, known_competitors, census_key, log=lambda m: None):
+def build_context(listing: PropertyListing, zip5, state, known_competitors, census_key,
+                  log=lambda m: None, google_key: str = ""):
     lat, lng = listing.lat, listing.lng
     ctx = {}
     try:
@@ -260,9 +261,12 @@ def build_context(listing: PropertyListing, zip5, state, known_competitors, cens
                                                   headcount=float(prof.population)))
     ctx["demand"] = demand
     try:
-        scan = comp_mod.run_full_competitor_scan("", lat, lng, zip5=zip5, state=state,
+        # Same Google-backed scan as the full report (directory pull included),
+        # so Scout and Summary are scored from the same data universe.
+        scan = comp_mod.run_full_competitor_scan(google_key, lat, lng, zip5=zip5, state=state,
                                                  known_competitors=known_competitors)
         ctx["competitors"] = [c.__dict__ for c in scan["competitors"]]
+        ctx["building_directory"] = [d.__dict__ for d in scan.get("building_directory", [])]
     except Exception as e:
         ctx["competitors"] = []; log(f"competitor scan failed: {e}")
     try:

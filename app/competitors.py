@@ -69,6 +69,7 @@ class CompetitorResult:
     tier: str = "General"   # "Specialist" (orofacial-pain credential) or "General" (DDS office)
     retire_prob: float = 0.0   # P(provider exits within planning horizon) — depreciating threat
     tenure_years: float = 0.0
+    types: list[str] = field(default_factory=list)   # Google place types (directory classification)
 
 
 # OpenStreetMap tag filters covering dental + orofacial-pain-adjacent practices.
@@ -132,7 +133,7 @@ _DIRECTORY_TYPES = ["doctor", "dentist", "physiotherapist", "hospital",
                     "medical_lab", "wellness_center"]
 
 
-def building_directory(api_key: str, lat: float, lon: float, radius_m: int = 80) -> list[CompetitorResult]:
+def building_directory(api_key: str, lat: float, lon: float, radius_m: int = 120) -> list[CompetitorResult]:
     """Google Maps 'Directory'-style pull: every medical/dental tenant AT (or
     within ~radius of) this exact building, via a tight-radius Places (New)
     nearby search. This captures in-building providers that NPI misses."""
@@ -154,6 +155,7 @@ def building_directory(api_key: str, lat: float, lon: float, radius_m: int = 80)
             user_ratings_total=pl.get("user_ratings_total"),
             website=pl.get("website"),
             phone=pl.get("phone"),
+            types=pl.get("types", []),
         )
     return list(seen.values())
 
@@ -429,6 +431,7 @@ def run_full_competitor_scan(api_key: str, lat: float, lon: float, radius_m: int
     #    wipe out the credentialed NPPES specialists or the website-verified
     #    watchlist gathered above.
     dentists = []
+    directory = []          # full Google Maps building directory (ALL medical tenants)
     google_error = ""
     used_google = False
     try:
@@ -439,10 +442,14 @@ def run_full_competitor_scan(api_key: str, lat: float, lon: float, radius_m: int
             for d in search_nearby_competitors(api_key, lat, lon, radius_m):
                 merged[d.place_id] = d
             try:
-                for d in building_directory(api_key, lat, lon):
-                    merged.setdefault(d.place_id, d)
+                directory = building_directory(api_key, lat, lon)
             except Exception:
-                pass
+                directory = []
+            # Only DENTIST-typed tenants belong in the competitor-classification
+            # pool; MD/PT/lab tenants are directory context, not dental rivals.
+            for d in directory:
+                if "dentist" in (d.types or []):
+                    merged.setdefault(d.place_id, d)
             dentists = list(merged.values())
             used_google = True
         else:
@@ -474,4 +481,5 @@ def run_full_competitor_scan(api_key: str, lat: float, lon: float, radius_m: int
                                     c.distance_mi if c.distance_mi is not None else 999))
     referral_dentists.sort(key=lambda c: c.distance_mi if c.distance_mi is not None else 999)
     return {"competitors": competitors, "referral_dentists": referral_dentists,
-            "google_error": google_error, "used_google": used_google}
+            "google_error": google_error, "used_google": used_google,
+            "building_directory": directory}

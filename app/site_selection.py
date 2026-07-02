@@ -149,7 +149,9 @@ def score_site(rep: dict) -> dict:
              "basis": f"{in_building} in-building + {near} within ½ mi; {n_ref} in ZIP",
              "confidence": "High"},
             {"name": "Medical Building Strength", "score": building_pts, "max": 20,
-             "basis": f"{in_building} physician(s) at this exact address",
+             "basis": (f"{in_building} physician(s) at this exact address (NPI)"
+                       + (f"; Google directory confirms {len(rep.get('building_directory') or [])} "
+                          "medical tenant(s) on-site" if rep.get("building_directory") else "")),
              "confidence": "High"},
             {"name": "Nearby Hospital Ecosystem", "score": hospital_pts, "max": 10,
              "basis": "Proxy from hub strength + on-site cluster", "confidence": "Low — hospital/imaging/sleep-lab proximity not yet measured"},
@@ -165,6 +167,7 @@ def score_site(rep: dict) -> dict:
         ],
         "deliverables": {
             "referring_physicians_total": n_ref,
+            "google_directory_tenants": len(rep.get("building_directory") or []),
             "in_building_physicians": in_building,
             "within_half_mile": near,
             "on_site_physicians": n_onsite,

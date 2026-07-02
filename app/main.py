@@ -187,7 +187,8 @@ class ListingsWorker(QThread):
                     self.progress.emit(f"Building market context for ZIP {lz} "
                                        f"({i+1}/{len(listings)})…")
                     ctx = sitescout.build_context(pl, lz, state, kc, census,
-                                                  log=lambda m: self.progress.emit(m))
+                                                  log=lambda m: self.progress.emit(m),
+                                                  google_key=self.cfg.get("google_places_api_key", ""))
                     ctx_cache[lz] = ctx
                 self.progress.emit(f"Scoring {i+1}/{len(listings)}: {pl.address}")
                 v = sitescout.calculate_location_verdict(pl, ctx, mapbox)
