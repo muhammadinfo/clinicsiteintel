@@ -634,13 +634,21 @@ class MainWindow(QMainWindow):
         if not self._ss_rows:
             self.ss_ranking.hide()
             return
-        ranked = sorted(self._ss_rows, key=lambda r: -(r[1].get("score") or 0))
+        # Rank by the RISK-ADJUSTED FLOOR (p05), not the point score: ordering
+        # many candidates by point estimate suffers the winner's curse — the top
+        # rows are the luckiest estimates. The floor rewards sites that are good
+        # even in the pessimistic tail. Falls back to score when p05 is absent.
+        ranked = sorted(self._ss_rows,
+                        key=lambda r: -(r[1].get("score_p05") if r[1].get("score_p05") is not None
+                                        else (r[1].get("score") or 0)))
         rows = ""
         for i, (pl, v) in enumerate(ranked, 1):
             color = self._verdict_color(v["verdict"])
             price = f"${pl['price']:,.0f}/yr" if pl.get("price") else "—"
             cap = v.get("capture_score")
             cap_s = f"{cap}%" if cap is not None else "—"
+            p05 = v.get("score_p05")
+            p05_s = f"{p05:.0f}" if p05 is not None else "—"
             rows += (
                 f"<tr style='border-bottom:1px solid #f0f0f3;'>"
                 f"<td style='padding:5px 8px;font-weight:800;color:#8e8e93;'>{i}</td>"
@@ -649,12 +657,14 @@ class MainWindow(QMainWindow):
                 f"<td style='padding:5px 8px;text-align:center;'>"
                 f"<b style='color:{color};'>{v['verdict']}</b></td>"
                 f"<td style='padding:5px 8px;text-align:right;font-weight:800;color:{color};'>{v['score']}</td>"
+                f"<td style='padding:5px 8px;text-align:right;font-weight:800;color:#1c1c1e;'>{p05_s}</td>"
                 f"<td style='padding:5px 8px;text-align:right;color:#6e6e73;'>{cap_s}</td></tr>")
         html = (
             "<div style='font-family:Segoe UI;'>"
             "<div style='font-weight:800;font-size:13px;color:#1c1c1e;padding:2px 4px 8px;'>"
-            f"Ranked best → worst &nbsp;<span style='color:#8e8e93;font-weight:600;'>"
-            f"({len(ranked)} listings)</span></div>"
+            f"Ranked best → worst by RISK-ADJUSTED floor &nbsp;<span style='color:#8e8e93;font-weight:600;'>"
+            f"({len(ranked)} listings — 'FLOOR' = 5th-percentile score; ranking by it avoids "
+            "the winner's curse of point-score ordering)</span></div>"
             "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
             "<tr style='color:#8e8e93;font-size:10px;letter-spacing:.04em;'>"
             "<th style='text-align:left;padding:0 8px;'>#</th>"
@@ -662,6 +672,7 @@ class MainWindow(QMainWindow):
             "<th style='text-align:left;padding:0 8px;'>PRICE</th>"
             "<th style='text-align:center;padding:0 8px;'>VERDICT</th>"
             "<th style='text-align:right;padding:0 8px;'>SCORE</th>"
+            "<th style='text-align:right;padding:0 8px;'>FLOOR</th>"
             "<th style='text-align:right;padding:0 8px;'>CAPTURE</th></tr>"
             f"{rows}</table></div>")
         self.ss_ranking.setHtml(html)
@@ -684,10 +695,11 @@ class MainWindow(QMainWindow):
         import csv
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["address", "price", "sqft", "verdict", "score", "capture_%", "recommendation"])
+            w.writerow(["address", "price", "sqft", "verdict", "score", "score_p05_floor",
+                        "capture_%", "recommendation"])
             for pl, v in self._ss_rows:
                 w.writerow([pl["address"], pl.get("price"), pl.get("sqft"), v["verdict"],
-                            v["score"], v["capture_score"], v["recommendation"]])
+                            v["score"], v.get("score_p05"), v["capture_score"], v["recommendation"]])
         self.ss_status.setText(f"Exported {len(self._ss_rows)} listings to {path}")
 
     def _build_realestate_tab(self):

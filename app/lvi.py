@@ -147,6 +147,82 @@ def derive_if_from_medical_hub(referrals: list, competitors: list = None) -> flo
     return clip(50 + min(45, near * 7))
 
 
+# Factor correlation matrix, order [ds, rp, if_, cp, of_, rc]:
+#   rp↔if_ +0.50 : referral access and medical-hub strength share the same
+#                  underlying provider density — they move together.
+#   ds↔cp  -0.30 : affluent, high-fit markets ATTRACT specialists, so a strong
+#                  demographic draw co-occurs with more competition (lower Cp).
+#   rp↔cp  -0.20 : deep referral pools likewise attract competitors.
+# Everything else ~0 (rent and operations are site-idiosyncratic).
+_FACTOR_CORR = [
+    [1.00, 0.00, 0.00, -0.30, 0.00, 0.00],
+    [0.00, 1.00, 0.50, -0.20, 0.00, 0.00],
+    [0.00, 0.50, 1.00,  0.00, 0.00, 0.00],
+    [-0.30, -0.20, 0.00, 1.00, 0.00, 0.00],
+    [0.00, 0.00, 0.00,  0.00, 1.00, 0.00],
+    [0.00, 0.00, 0.00,  0.00, 0.00, 1.00],
+]
+
+
+def _cholesky(a):
+    """Lower-triangular Cholesky factor of a symmetric positive-definite matrix."""
+    m = len(a)
+    L = [[0.0] * m for _ in range(m)]
+    for i in range(m):
+        for j in range(i + 1):
+            s = sum(L[i][k] * L[j][k] for k in range(j))
+            if i == j:
+                L[i][j] = math.sqrt(max(a[i][i] - s, 1e-12))
+            else:
+                L[i][j] = (a[i][j] - s) / L[j][j]
+    return L
+
+
+_FACTOR_CORR_CHOL = _cholesky(_FACTOR_CORR)
+
+
+def _norm_ppf(p):
+    """Acklam's rational approximation to the standard-normal inverse CDF."""
+    a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+         1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
+    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+         6.680131188771972e+01, -1.328068155288572e+01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+         3.754408661907416e+00]
+    plow, phigh = 0.02425, 1 - 0.02425
+    if p < plow:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+    if p > phigh:
+        q = math.sqrt(-2 * math.log(1 - p))
+        return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+    q = p - 0.5
+    r = q * q
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
+
+
+_Z_NODES = [_norm_ppf((i + 0.5) / 101) for i in range(101)]
+
+
+def _mean_preserving_logit_mu(p, s):
+    """Solve for mu such that E[sigmoid(mu + s·Z)] = p (Z ~ N(0,1)).
+    A plain logit-normal centered at logit(p) preserves the MEDIAN but Jensen-
+    skews the MEAN away from p near the boundaries; this shift removes that
+    bias so the Monte Carlo stays centered on the point estimate."""
+    def mean_at(mu):
+        return sum(1.0 / (1.0 + math.exp(-(mu + s * z))) for z in _Z_NODES) / len(_Z_NODES)
+    lo, hi = math.log(p / (1 - p)) - 6.0, math.log(p / (1 - p)) + 6.0
+    for _ in range(50):
+        mid = (lo + hi) / 2.0
+        if mean_at(mid) < p:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
 def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42,
                     on_site_count: int = 0, competitor_count: int = 0) -> dict:
     """Monte Carlo credible interval.
@@ -168,16 +244,41 @@ def monte_carlo_lvi(inputs: LVIInputs, n: int = 50000, seed: int = 42,
     # Overlay pre-set sigmas (e.g. ds from Census MOE data).
     if inputs.sigma:
         sigma.update(inputs.sigma)
+
+    # --- Boundary-respecting, CORRELATED factor sampling -----------------
+    # (1) Each factor is perturbed in LOGIT space (median-preserving, always in
+    #     (0,100)) instead of clip(gauss(...)): clipping a Gaussian at the 0/100
+    #     boundary biases the factor mean toward the middle — e.g. a competition
+    #     score of 3 (saturated market) inflated to ~5.3, systematically
+    #     UNDERSTATING competition risk at exactly the sites where it matters.
+    # (2) Factors are drawn from a Gaussian copula so their real-world
+    #     correlations propagate into the interval: a medical hub and referral
+    #     access rise together; affluent markets attract more competitors.
+    order = ["ds", "rp", "if_", "cp", "of_", "rc"]
+    means = {"ds": inputs.ds, "rp": inputs.rp, "if_": inputs.if_,
+             "cp": inputs.cp, "of_": inputs.of_, "rc": inputs.rc}
+    corr = _FACTOR_CORR_CHOL
+    # Pre-compute per-factor logit parameters: sd via the delta method (capped —
+    # far from the boundary it reproduces the requested sigma; near it, spread is
+    # naturally compressed), and mu solved so the factor's MEAN equals its point
+    # value exactly (mean-preserving; no clipping or Jensen bias).
+    logit_mu, logit_sd = {}, {}
+    for k in order:
+        p = min(max(means[k] / 100.0, 0.005), 0.995)
+        slope = 100.0 * p * (1 - p)                 # d(scale)/d(logit) at the median
+        logit_sd[k] = min(1.5, sigma.get(k, 10.0) / max(slope, 1e-6))
+        logit_mu[k] = _mean_preserving_logit_mu(p, logit_sd[k])
+
     rnd = random.Random(seed)
     draws = []
     for _ in range(n):
-        ds = clip(rnd.gauss(inputs.ds, sigma.get("ds", 8)))
-        rp = clip(rnd.gauss(inputs.rp, sigma.get("rp", 12)))
-        if_ = clip(rnd.gauss(inputs.if_, sigma.get("if_", 15)))
-        cp = clip(rnd.gauss(inputs.cp, sigma.get("cp", 10)))
-        of_ = clip(rnd.gauss(inputs.of_, sigma.get("of_", 12)))
-        rc = clip(rnd.gauss(inputs.rc, sigma.get("rc", 20)))
-        draws.append(calc_lvi(ds, rp, if_, cp, of_, rc))
+        e = [rnd.gauss(0.0, 1.0) for _ in order]
+        f = {}
+        for i, k in enumerate(order):
+            z = sum(corr[i][j] * e[j] for j in range(i + 1))   # correlated normal
+            x = logit_mu[k] + logit_sd[k] * z
+            f[k] = 100.0 / (1.0 + math.exp(-x))                # always in (0,100)
+        draws.append(calc_lvi(f["ds"], f["rp"], f["if_"], f["cp"], f["of_"], f["rc"]))
     draws.sort()
     mean = sum(draws) / n
     sd = (sum((x - mean) ** 2 for x in draws) / n) ** 0.5

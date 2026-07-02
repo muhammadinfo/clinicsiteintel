@@ -60,6 +60,7 @@ class LocationVerdict:
     opportunities: list
     referrals_near: list = field(default_factory=list)
     competitors_near: list = field(default_factory=list)
+    score_p05: float | None = None   # risk-adjusted floor (5th percentile) — ranking basis
 
 
 # ---------------------------------------------------------------- listings
@@ -358,6 +359,16 @@ def calculate_location_verdict(listing: PropertyListing, ctx: dict, mapbox_token
                   for c in comps if c.get("competition_score", 0) > 0]
     cp = lvi.derive_cp_from_competitors_v2(comp_pairs)
     score = int(round(lvi.calc_lvi(ds, rp, if_, cp, 50.0, 50.0)))
+    # Risk-adjusted floor (p05) via the same correlated Monte Carlo the Summary
+    # uses. Ranking many listings by point score suffers the WINNER'S CURSE —
+    # the top of the list is systematically the luckiest estimate, not the best
+    # site — so the ranked table orders by this floor instead.
+    on_site = sum(1 for r in ref_dicts
+                  if (r.get("distance_mi") if r.get("distance_mi") is not None else 9) <= 0.2)
+    n_comp_scored = len(comp_pairs)
+    mc = lvi.monte_carlo_lvi(lvi.LVIInputs(ds=ds, rp=rp, if_=if_, cp=cp, of_=50.0, rc=50.0),
+                             n=6000, on_site_count=on_site, competitor_count=n_comp_scored)
+    score_p05 = mc["p05"]
     # Verdict bands aligned to the Summary's LVI bands (PURSUE >=65, conditions >=50).
     verdict = ("Strong Buy" if score >= 65 else "Viable" if score >= 50
                else "Caution" if score >= 38 else "Not Recommended")
@@ -390,7 +401,8 @@ def calculate_location_verdict(listing: PropertyListing, ctx: dict, mapbox_token
            "Only if better candidates are exhausted; mitigate the listed risks first." if verdict == "Caution" else
            "Pass — prefer a less saturated / more affluent site.")
     iso_summary = f"15 min: {iso[15]:,} | 30 min: {iso[30]:,} | 45 min: {iso[45]:,} expected cases"
-    return LocationVerdict(verdict=verdict, score=score, capture_score=round(capture, 1),
+    return LocationVerdict(verdict=verdict, score=score, score_p05=score_p05,
+                           capture_score=round(capture, 1),
                            drive_time_minutes=nearest_comp_dt, isochrone_summary=iso_summary,
                            reasoning_simple=reasoning, medical_dental_fit=fit,
                            payer_affluence_summary=payer_summary, recommendation=rec,
